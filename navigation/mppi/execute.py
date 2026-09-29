@@ -19,6 +19,8 @@ pose=None;grid=None;command=None;pose_received=0.;grid_received=0.;fault=None;st
 result=dict(execute=execute,success=False,target=target,ground_truth=None)
 # Retain recent global grids so a transient replan failure remains inspectable after stopping.
 global_grids=[]
+collision_snapshot=None
+grid_metadata=None
 def global_costs(m):
  global_grids.append(dict(receipt=time.time(),stamp=m.header.stamp.sec+m.header.stamp.nanosec*1e-9,frame=m.header.frame_id,width=m.info.width,height=m.info.height,resolution=m.info.resolution,origin=[m.info.origin.position.x,m.info.origin.position.y],data=list(m.data)))
  global_grids[:]=global_grids[-8:]
@@ -35,11 +37,20 @@ def odom(m):
   elif math.hypot(cur[0]-pose[0],cur[1]-pose[1])>.03+.5*dt or abs(angle(cur[2]-pose[2]))>.05+1.2*dt:fault='Pose jump outside bounded motion'
  pose=cur;pose_received=time.monotonic();history.append(cur);history[:]=history[-100:]
 def costs(m):
- global grid,grid_received,fault
+ global grid,grid_received,fault,grid_metadata
  if m.header.frame_id!='camera_init':fault='Unexpected local costmap frame';return
  q=m.info.origin.orientation
  if abs(q.x)+abs(q.y)+abs(q.z)>1e-6:fault='Rotated costmap unsupported';return
  grid=(m.data,m.info.width,m.info.height,m.info.resolution,m.info.origin.position.x,m.info.origin.position.y);grid_received=time.monotonic()
+ grid_metadata=dict(frame=m.header.frame_id,stamp=m.header.stamp.sec+m.header.stamp.nanosec*1e-9)
+def checked_sweep(v):
+ global collision_snapshot
+ try:swept_clear(grid,pose,v)
+ except ValueError as e:
+  # Capture in memory before ROS callbacks can replace it. Write only after stopping.
+  collision_snapshot=dict(reason=str(e),captured=time.time(),pose=list(pose),command=list(v),
+   grid=grid,metadata=dict(grid_metadata),grid_receipt_age_s=time.monotonic()-grid_received)
+  raise
 def cmd(m):
  global command
  command=([m.linear.x,m.linear.y,m.angular.z],time.monotonic())
@@ -78,7 +89,7 @@ try:
  while time.monotonic()<end:rclpy.spin_once(n,timeout_sec=.03)
  healthy();a=history[-1];recent=[p for p in history if a[3]-p[3]<2]
  if len(recent)<8 or max(math.hypot(p[0]-a[0],p[1]-a[1]) for p in recent)>.025 or max(abs(angle(p[2]-a[2])) for p in recent)>.025:raise RuntimeError('Start not stationary')
- swept_clear(grid,pose,(0.,0.,0.));result['start']=map_pose()
+ checked_sweep((0.,0.,0.));result['start']=map_pose()
  p=PoseStamped();p.header.frame_id='map';p.pose.position.x,p.pose.position.y=target['pose'][:2];p.pose.orientation.z=math.sin(target['pose'][2]/2);p.pose.orientation.w=math.cos(target['pose'][2]/2)
  planner=ActionClient(n,ComputePathToPose,'/compute_path_to_pose')
  if not planner.wait_for_server(timeout_sec=3):raise RuntimeError('No planner server')
@@ -101,7 +112,7 @@ try:
    else:
     v,created=command
     if time.monotonic()-created>.10:raise RuntimeError('Controller command stale')
-    swept_clear(grid,pose,v)
+    checked_sweep(v)
     age_before_send=time.monotonic()-created
     if age_before_send>.10:raise RuntimeError('Command exceeded 100 ms before transport')
     try:guard.send(v,created)
@@ -134,6 +145,13 @@ finally:
   healthy();last=map_pose();result['last_pose']=last;result['estimated_xy_error']=math.hypot(last[0]-target['pose'][0],last[1]-target['pose'][1]);result['estimated_yaw_error']=abs(angle(last[2]-target['pose'][2]));result['success']=execute and result.get('navigation_status')==4 and result['estimated_xy_error']<=.08 and result['estimated_yaw_error']<=.12 and result.get('guard_stop',{}).get('stop_code')==0
  except Exception as e:result['final_health_error']=str(e)
  result['preview_passed']=not execute and not result.get('final_health_error') and result.get('guard_stop',{}).get('stop_code')==0 and (result.get('navigation_status')==4 or result.get('reason')=='Preview duration reached')
+ if collision_snapshot is not None:
+  try:
+   snapshot=dict(collision_snapshot);data,width,height,res,ox,oy=snapshot.pop('grid')
+   snapshot['costmap']=dict(width=width,height=height,resolution=res,origin=[ox,oy],data=list(data))
+   evidence_path=state/('failure-local-sweep-'+str(time.time_ns())+'.json')
+   evidence_path.write_text(json.dumps(snapshot));result['local_collision_evidence']=str(evidence_path)
+  except Exception as e:result['local_collision_evidence_error']=str(e)
  (state/'motion_active').unlink(missing_ok=True)
  if execute and not result['success']:
   grids_path=state/('failure-global-costmaps-'+time.strftime('%Y%m%d-%H%M%S')+'.json');grids_path.write_text(json.dumps(global_grids));result['global_costmap_evidence']=str(grids_path)

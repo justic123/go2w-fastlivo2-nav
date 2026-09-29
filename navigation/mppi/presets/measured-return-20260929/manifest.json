@@ -1,0 +1,17 @@
+{
+  "tag": "v0.1.1-measured-return-20260929",
+  "purpose": "Freeze parameters after one measured return; obstacle demo not yet validated",
+  "measured_position_error_cm": 7,
+  "software_position_error_cm": 7.66,
+  "software_yaw_error_deg": 3.18,
+  "measured_yaw_error_deg": null,
+  "sha256": {
+    "navigation/mppi/params.yaml": "f8e86a47d5312e78bc375f3e9a75cd9744ef7fb8a91e131cae12d839076dc76d",
+    "navigation/mppi/make_config.py": "fb68ad7b17f03517be12f4d994e2cf2d5e5dc78f0e9b1699827d9148aef645a6",
+    "navigation/mppi/execute.py": "3575457645a66b84664de9c5cb6d3f2149ee047c9f15c8f02e44e127267da6fe",
+    "navigation/nav2/motion_policy.py": "1224afb6bac68d4d6f92f56d2d1bbf90750274de9a579a2ff1bb39cfc758ba1d",
+    "navigation/mppi/guard/sport_guard.cpp": "19e327a407059665f74279097a535295c54dd669416bfe598f47db2fd63de38d",
+    "desktop/livo.yaml": "5aca007f5b7c48be9dd526c72c33c929445f1d679dc0ec1535fd548aac629f31",
+    "desktop/camera.yaml": "20d9d21f05e826c516e16ec91bbeca12d1a45ace78a45a1655676f4488c7f6a0"
+  }
+}
