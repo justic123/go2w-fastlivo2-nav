@@ -11,7 +11,7 @@ from sensor_msgs.msg import PointCloud2,PointField
 from nav_msgs.msg import Odometry
 from tf2_ros import Buffer,TransformListener,TransformBroadcaster
 from scipy.spatial.transform import Rotation
-root=Path('/state');sel=json.loads(Path('/work/selection.json').read_text());session=sel['source_session'];T=np.array(sel['transform']);reg=o3d.pipelines.registration
+root=Path('/state');sel=json.loads(Path('/work/selection.json').read_text());session=sel['source_session'];T=np.array(sel['transform'],dtype=float);reg=o3d.pipelines.registration
 maproot=Path('/work/maps')/sel['map_id'];target=o3d.geometry.PointCloud(o3d.utility.Vector3dVector(np.load(maproot/'points.npy')));target.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=.3,max_nn=40))
 rclpy.init();n=Node('saved_map_localization',parameter_overrides=[rclpy.parameter.Parameter('use_sim_time',value=True)]);buf=Buffer();listener=TransformListener(buf,n);broadcaster=TransformBroadcaster(n);latest=None;pose=None;checked=0.;fault=None;last_trial=0.;stats={};validations=0
 qos=QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL);mp=n.create_publisher(PointCloud2,'/saved_map/cloud',qos)

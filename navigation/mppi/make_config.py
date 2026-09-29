@@ -47,4 +47,8 @@ if (root/'selection.json').exists():
  g=p['global_costmap']['global_costmap']['ros__parameters'];g['global_frame']='map';g['plugins']=['static_layer','obstacle_layer','inflation_layer'];g['static_layer']=dict(plugin='nav2_costmap_2d::StaticLayer',map_topic='/map',map_subscribe_transient_local=True,subscribe_to_updates=False)
  p['bt_navigator']['ros__parameters']['global_frame']='map'
  p['lifecycle_manager']['ros__parameters']['node_names'].insert(0,'map_server')
-(root/'params.yaml').write_text(yaml.safe_dump(p,sort_keys=False))
+# Optional output keeps demo map selection separate from the frozen parameter file.
+if __name__=='__main__':
+ import argparse
+ parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=root/'params.yaml');args=parser.parse_args()
+ args.output.write_text(yaml.safe_dump(p,sort_keys=False))

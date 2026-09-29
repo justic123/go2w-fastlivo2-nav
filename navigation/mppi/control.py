@@ -44,7 +44,7 @@ with (root/'control.lock').open('a') as lock:
   folder=state/(mode+'-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()));folder.mkdir()
   (root/'current.json').write_text(json.dumps(dict(folder=str(folder),mode=mode,session=session)))
   args=['docker','run','-d','--init','--name',name,'--label',label+'=preview','--network','host','--user',f'{os.getuid()}:{os.getgid()}',
-   '-e','MPPI_MODE='+mode,'-e','MPPI_SESSION='+session,'-e','OPENBLAS_NUM_THREADS=1','-e','OMP_NUM_THREADS=2',
+   '-e','MPPI_MODE='+mode,'-e','MPPI_SESSION='+session,'-e','GO2W_MPPI_CONFIG='+os.environ.get('GO2W_MPPI_CONFIG','/work/params.yaml'),'-e','OPENBLAS_NUM_THREADS=1','-e','OMP_NUM_THREADS=2',
    '-v',str(root)+':/work:ro','-v',str(folder)+':/state','-v',str(project/'desktop')+':/desktop:ro',image]
   run(args)
   print('Isolated ROS_DOMAIN_ID=79; no robot actuation. Logs: '+str(folder))

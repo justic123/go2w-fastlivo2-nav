@@ -56,3 +56,5 @@ backups/
 /navigation/mppi/experiments/
 *.pre_*
 /visualization/view_status.json
+/demo/state.json
+/navigation/mppi/demo_nav.yaml

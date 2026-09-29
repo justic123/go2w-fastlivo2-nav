@@ -34,7 +34,7 @@ try:
    if time.monotonic()>deadline:raise RuntimeError('Saved-map localization did not validate')
    time.sleep(.1)
  start('heading_view',['python3','/work/heading_view.py'])
- common=['--ros-args' ,'--params-file','/work/params.yaml']
+ common=['--ros-args' ,'--params-file',os.environ.get('GO2W_MPPI_CONFIG','/work/params.yaml')]
  if selected:start('map_server',['/opt/ros/humble/lib/nav2_map_server/map_server']+common)
  for pkg,exe,remap in [('nav2_planner','planner_server',[]),('nav2_controller','controller_server',['-r','cmd_vel:=/mppi/cmd_vel_raw']),('nav2_velocity_smoother','velocity_smoother',['-r','cmd_vel:=/mppi/cmd_vel_raw','-r','cmd_vel_smoothed:=/mppi/cmd_vel_smoothed']),('nav2_bt_navigator','bt_navigator',[]),('nav2_lifecycle_manager','lifecycle_manager',['-r','__node:=lifecycle_manager'])]:
   start(exe,['/opt/ros/humble/lib/'+pkg+'/'+exe]+common+remap)
