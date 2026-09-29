@@ -1,0 +1,44 @@
+[
+  {
+    "name": "FAST-LIVO2",
+    "commit": "0d2c0346107b75b59934975adec9a6eeeb913c64",
+    "patch": "FAST-LIVO2-changes.patch",
+    "patch_sha256": "981cfca14cbbe2ebfca07ba059c5e94c8b0aa16a03a2ba42d832dc345c403357",
+    "role": "board build source"
+  },
+  {
+    "name": "Sophus",
+    "commit": "a621ff2e56c56c839a6c40418d42c3c254424b5c",
+    "patch": "Sophus-changes.patch",
+    "patch_sha256": "8c55a50bf8b1fe876f685da4c8f424b8a3585952465998a1fa195dc9911d0582",
+    "role": "board build source"
+  },
+  {
+    "name": "rpg_vikit",
+    "commit": "6c886c8e5d83997806e00294826d528cea3581dd",
+    "patch": "rpg_vikit-changes.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "role": "board build source"
+  },
+  {
+    "name": "vision_opencv",
+    "commit": "cfabf72fb02970a661b5e68fbee503c5d9f94729",
+    "patch": "vision_opencv-changes.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "role": "board build source"
+  },
+  {
+    "name": "HesaiLidar_General_SDK",
+    "commit": "d7f39ee81534f21b7f69d376f8b77a6cc73eb1da",
+    "patch": "HesaiLidar_General_SDK-changes.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "role": "reference only, not built"
+  },
+  {
+    "name": "livox_ros_driver",
+    "commit": "3d240d5666129e1a3052e78ee8487a04b08fdda3",
+    "patch": "livox_ros_driver-changes.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "role": "reference only, not built"
+  }
+]

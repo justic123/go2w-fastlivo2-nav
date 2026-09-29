@@ -1,0 +1,110 @@
+[
+  {
+    "path": "desktop/Sophus",
+    "url": "https://github.com/strasdat/Sophus.git",
+    "commit": "a621ff2e56c56c839a6c40418d42c3c254424b5c",
+    "patch": "desktop__Sophus.patch",
+    "patch_sha256": "8c55a50bf8b1fe876f685da4c8f424b8a3585952465998a1fa195dc9911d0582",
+    "extras": []
+  },
+  {
+    "path": "desktop/ws/src/livox_ros_driver",
+    "url": "https://github.com/Livox-SDK/livox_ros_driver.git",
+    "commit": "3d240d5666129e1a3052e78ee8487a04b08fdda3",
+    "patch": "desktop__ws__src__livox_ros_driver.patch",
+    "patch_sha256": "b0dba70b2db65a33daf5e7969f4e579c4028d908489800474af47e4b28f4ea23",
+    "extras": []
+  },
+  {
+    "path": "desktop/ws/src/livox_ros_driver/livox_ros_driver/Livox-SDK",
+    "url": "https://github.com/Livox-SDK/Livox-SDK.git",
+    "commit": "9306596a2bf15c1343bc023b497465ed0a32909d",
+    "patch": "desktop__ws__src__livox_ros_driver__livox_ros_driver__Livox-SDK.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "desktop/ws/src/FAST-LIVO2",
+    "url": "https://github.com/hku-mars/FAST-LIVO2.git",
+    "commit": "0d2c0346107b75b59934975adec9a6eeeb913c64",
+    "patch": "desktop__ws__src__FAST-LIVO2.patch",
+    "patch_sha256": "1bbd43513be1f1aed3f93a2f36d95ada98106d0daddbcdf7e4d35d5a9368fe7c",
+    "extras": [
+      "src/test_xt_input.cpp"
+    ]
+  },
+  {
+    "path": "upstream/vision_opencv",
+    "url": "https://github.com/ros-perception/vision_opencv.git",
+    "commit": "cfabf72fb02970a661b5e68fbee503c5d9f94729",
+    "patch": "upstream__vision_opencv.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/livox_ros_driver",
+    "url": "https://github.com/Livox-SDK/livox_ros_driver.git",
+    "commit": "3d240d5666129e1a3052e78ee8487a04b08fdda3",
+    "patch": "upstream__livox_ros_driver.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/rpg_vikit",
+    "url": "https://github.com/xuankuzcr/rpg_vikit.git",
+    "commit": "6c886c8e5d83997806e00294826d528cea3581dd",
+    "patch": "upstream__rpg_vikit.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/Sophus",
+    "url": "https://github.com/strasdat/Sophus.git",
+    "commit": "a621ff2e56c56c839a6c40418d42c3c254424b5c",
+    "patch": "upstream__Sophus.patch",
+    "patch_sha256": "8c55a50bf8b1fe876f685da4c8f424b8a3585952465998a1fa195dc9911d0582",
+    "extras": []
+  },
+  {
+    "path": "upstream/FAST-LIVO2",
+    "url": "https://github.com/hku-mars/FAST-LIVO2.git",
+    "commit": "0d2c0346107b75b59934975adec9a6eeeb913c64",
+    "patch": "upstream__FAST-LIVO2.patch",
+    "patch_sha256": "17251c8522428d3e843682d1447c25c7f6f3d706f344693c8f1a16db72c2f59d",
+    "extras": [
+      "src/test_xt_input.cpp"
+    ]
+  },
+  {
+    "path": "upstream/unitree_sdk2-reference",
+    "url": "https://github.com/unitreerobotics/unitree_sdk2.git",
+    "commit": "63096d0ac0c5d2dec9d6e0c22cd5233410ca2f36",
+    "patch": "upstream__unitree_sdk2-reference.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/unitree_ros2-reference",
+    "url": "https://github.com/unitreerobotics/unitree_ros2.git",
+    "commit": "668d1ec5a05d1c38d3306bdca7d59f2ba3581a88",
+    "patch": "upstream__unitree_ros2-reference.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/HesaiLidar_General_SDK",
+    "url": "https://github.com/HesaiTechnology/HesaiLidar_General_SDK.git",
+    "commit": "d7f39ee81534f21b7f69d376f8b77a6cc73eb1da",
+    "patch": "upstream__HesaiLidar_General_SDK.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  },
+  {
+    "path": "upstream/unitree_slam-reference",
+    "url": "https://github.com/unitreerobotics/unitree_slam.git",
+    "commit": "1e49bfa4dca2c992a566ee7d1d8480d4102149b8",
+    "patch": "upstream__unitree_slam-reference.patch",
+    "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "extras": []
+  }
+]

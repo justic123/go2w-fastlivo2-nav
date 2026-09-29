@@ -1,0 +1,15 @@
+# Community 1080p focal/principal values; malformed off-diagonal entries discarded explicitly.
+# Input MUST be raw 1920x1080 resized to 640x360, NOT pre-undistorted. k3=0.
+# Candidate only; not a validated camera calibration.
+cam_model: Pinhole
+cam_width: 640
+cam_height: 360
+scale: 1.0
+cam_fx: 436.92608666666666
+cam_fy: 440.08353000000005
+cam_cx: 339.57047666666665
+cam_cy: 212.45890666666665
+cam_d0: -0.415971
+cam_d1: 0.158898
+cam_d2: -0.015395
+cam_d3: -0.008031

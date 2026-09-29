@@ -1,0 +1,66 @@
+{
+  "status": "candidate_only_not_calibrated_not_deployed",
+  "assumptions": [
+    "Go2 camera mount transferred to Go2W",
+    "URDF front_camera origin equals optical center; optical axis forward and level",
+    "LowState IMU frame matches URDF imu",
+    "official XT16 pose interpreted as lidar-to-same-IMU Rz+90"
+  ],
+  "p_camera_in_imu_m": [
+    0.35272,
+    -3e-05,
+    0.0006499999999999978
+  ],
+  "T_camera_from_imu": [
+    [
+      0.0,
+      -1.0,
+      0.0,
+      -3e-05
+    ],
+    [
+      0.0,
+      0.0,
+      -1.0,
+      0.0006499999999999978
+    ],
+    [
+      1.0,
+      0.0,
+      0.0,
+      -0.35272
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "T_camera_from_xt16": [
+    [
+      -1.0,
+      0.0,
+      0.0,
+      -3e-05
+    ],
+    [
+      0.0,
+      0.0,
+      -1.0,
+      -0.09015000000000001
+    ],
+    [
+      0.0,
+      -1.0,
+      0.0,
+      -0.18171999999999996
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ]
+}

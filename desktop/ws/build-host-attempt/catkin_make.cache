@@ -1,0 +1,2 @@
+FAST-LIVO2:livox_ros_driver/livox_ros_driver:vikit_common:vikit_ros
+-DSophus_DIR=/home/river/文档/ChatGPT/巡检/fast_livo2_port/desktop/ws/../../build-pc/Sophus -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_BUILD_TYPE=Release -DCATKIN_DEVEL_PREFIX=/home/river/文档/ChatGPT/巡检/fast_livo2_port/desktop/ws/devel -DCMAKE_INSTALL_PREFIX=/home/river/文档/ChatGPT/巡检/fast_livo2_port/desktop/ws/install -G Unix Makefiles

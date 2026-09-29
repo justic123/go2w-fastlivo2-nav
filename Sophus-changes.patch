@@ -1,0 +1,15 @@
+diff --git a/sophus/so2.cpp b/sophus/so2.cpp
+index 44fc4a1a..e73f3e04 100644
+--- a/sophus/so2.cpp
++++ b/sophus/so2.cpp
+@@ -29,8 +29,8 @@ namespace Sophus
+ 
+ SO2::SO2()
+ {
+-  unit_complex_.real() = 1.;
+-  unit_complex_.imag() = 0.;
++  unit_complex_.real(1.);
++  unit_complex_.imag(0.);
+ }
+ 
+ SO2

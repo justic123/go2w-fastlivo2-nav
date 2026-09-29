@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(fast_livo2_input_audit)
+set(CMAKE_CXX_STANDARD 17)
+find_package(unitree_sdk2 REQUIRED)
+add_executable(lowstate_audit lowstate_audit.cpp)
+target_link_libraries(lowstate_audit unitree_sdk2)

@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(go2w_video_probe)
+set(CMAKE_CXX_STANDARD 17)
+find_package(unitree_sdk2 REQUIRED)
+add_executable(video_probe main.cpp)
+target_link_libraries(video_probe unitree_sdk2)

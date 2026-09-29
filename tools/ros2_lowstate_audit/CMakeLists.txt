@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+project(ros2_lowstate_audit)
+set(CMAKE_CXX_STANDARD 17)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(unitree_go REQUIRED)
+add_executable(ros2_lowstate_audit main.cpp)
+ament_target_dependencies(ros2_lowstate_audit rclcpp unitree_go)

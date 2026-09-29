@@ -1,0 +1,28 @@
+[
+  {
+    "Containers": "1",
+    "CreatedAt": "2026-09-29 12:50:17 +0800 CST",
+    "CreatedSince": "3 hours ago",
+    "Digest": "<none>",
+    "ID": "b66ad3e09686",
+    "Repository": "go2w-nav2-mppi",
+    "SharedSize": "N/A",
+    "Size": "2.56GB",
+    "Tag": "humble",
+    "UniqueSize": "N/A",
+    "VirtualSize": "2.556GB"
+  },
+  {
+    "Containers": "1",
+    "CreatedAt": "2026-09-28 15:38:49 +0800 CST",
+    "CreatedSince": "25 hours ago",
+    "Digest": "<none>",
+    "ID": "700acc72d194",
+    "Repository": "go2w-livo-desktop",
+    "SharedSize": "N/A",
+    "Size": "3.95GB",
+    "Tag": "20260928",
+    "UniqueSize": "N/A",
+    "VirtualSize": "3.948GB"
+  }
+]

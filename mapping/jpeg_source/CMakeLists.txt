@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+project(go2w_livo_jpeg)
+set(CMAKE_CXX_STANDARD 17)
+find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs)
+find_package(unitree_sdk2 REQUIRED)
+add_executable(livo_jpeg main.cpp)
+target_include_directories(livo_jpeg PRIVATE ${catkin_INCLUDE_DIRS})
+target_link_libraries(livo_jpeg unitree_sdk2 ${catkin_LIBRARIES})

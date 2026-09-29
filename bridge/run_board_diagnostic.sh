@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -eo pipefail
+root=/home/unitree/fast_livo2_port/build1
+run=${1:?output directory name required}
+reference=${2:?start or end required}
+seconds=${3:-30}
+imu_source=${4:-ros2}
+[[ "$imu_source" =~ ^(ros2|sdk2)$ ]]
+[[ "$seconds" =~ ^[0-9]+$ ]] && (( seconds >= 5 && seconds <= 60 ))
+[[ "$run" =~ ^[a-zA-Z0-9_-]+$ && "$reference" =~ ^(start|end)$ ]]
+if pgrep -x xt16_driver >/dev/null || pgrep -x unitree_slam >/dev/null || pgrep -x fastlivo_mapping >/dev/null; then echo 'Conflicting process'; exit 1; fi
+mkdir "$root/$run"
+master_pid= node_pid= driver_pid=
+cleanup() {
+  for child in "$node_pid" "$master_pid" "$driver_pid"; do
+    if [[ -n "$child" ]]; then kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi
+  done
+}
+trap cleanup EXIT
+source /opt/ros/noetic/setup.bash
+source "$root/ws/devel/setup.bash"
+export ROS_MASTER_URI=http://127.0.0.1:11321 ROS_IP=127.0.0.1 ROS_HOSTNAME=localhost ROS_LOG_DIR="$root/$run/ros_logs"
+roscore -p 11321 > "$root/$run/master.log" 2>&1 & master_pid=$!
+ready=false
+for attempt in {1..20}; do
+  if rosparam list >/dev/null 2>&1; then ready=true; break; fi
+  sleep .5
+done
+[[ "$ready" == true ]]
+rosparam load "$root/bridge/candidate.yaml" /go2w_lio
+rosrun fast_livo fastlivo_mapping __ns:=/go2w_lio /aft_mapped_to_init:=/go2w_lio/odometry /cloud_registered:=/go2w_lio/cloud /path:=/go2w_lio/path /mavros/vision_pose/pose:=/go2w_lio/unused_pose > "$root/$run/node.log" 2>&1 & node_pid=$!
+timeout -s INT -k 5 "$((seconds+25))" bash /home/unitree/go2w_slam_setup/helpers/run_driver.sh > "$root/$run/driver.log" 2>&1 & driver_pid=$!
+python3 "$root/bridge/live_bridge_ros1.py" --imu-source "$imu_source" --diagnostic --point-time-unit ns --header-reference "$reference" --seconds "$seconds" --output "$root/$run/bridge"
+kill -0 "$node_pid"

@@ -1,0 +1,68 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 30; 30; 35
+    Fixed Frame: camera_init
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 30
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Saved map (10 cm voxels)
+      Enabled: true
+      Topic:
+        Value: /go2w_saved/cloud
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 5
+      Size (Pixels): 3
+      Size (m): 0.025
+      Style: Points
+      Color Transformer: AxisColor
+      Axis: Z
+      Position Transformer: XYZ
+      Decay Time: 0
+    - Class: rviz_default_plugins/Path
+      Name: Trajectory
+      Enabled: true
+      Topic:
+        Value: /go2w_saved/path
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Color: 255; 80; 40
+      Line Style: Lines
+      Line Width: 0.04
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Start and End
+      Enabled: true
+      Topic:
+        Value: /go2w_saved/markers
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 18
+      Pitch: 0.65
+      Yaw: 3.14
+      Focal Point:
+        X: 5.0
+        Y: 0
+        Z: 0
+Window Geometry:
+  Width: 2000
+  Height: 1200

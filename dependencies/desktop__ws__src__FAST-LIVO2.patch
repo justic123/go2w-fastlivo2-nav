@@ -1,0 +1,241 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0652aab..8cad3d6 100755
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -77,6 +77,7 @@ endif()
+ 
+ # Find catkin and required dependencies
+ find_package(catkin REQUIRED COMPONENTS
++  livox_ros_driver
+   geometry_msgs
+   nav_msgs
+   sensor_msgs
+@@ -99,7 +100,7 @@ find_package(OpenCV REQUIRED)
+ find_package(Sophus REQUIRED)
+ find_package(Boost REQUIRED COMPONENTS thread)
+ 
+-set(Sophus_LIBRARIES libSophus.so)
++
+ 
+ # Define the catkin package
+ catkin_package(
+@@ -144,4 +145,16 @@ target_link_libraries(fastlivo_mapping
+ # Link mimalloc if found
+ if(mimalloc_FOUND)
+   target_link_libraries(fastlivo_mapping mimalloc)
+-endif()
+\ No newline at end of file
++endif()
++if(OpenMP_CXX_FOUND)
++  target_link_libraries(fastlivo_mapping OpenMP::OpenMP_CXX)
++endif()
++
++add_executable(test_xt_input src/test_xt_input.cpp)
++target_link_libraries(test_xt_input pre ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${OpenCV_LIBRARIES} ${Sophus_LIBRARIES})
++if(OpenMP_CXX_FOUND)
++  target_link_libraries(test_xt_input OpenMP::OpenMP_CXX)
++endif()
++
++add_dependencies(pre ${catkin_EXPORTED_TARGETS})
++add_dependencies(fastlivo_mapping ${catkin_EXPORTED_TARGETS})
+diff --git a/include/vio.h b/include/vio.h
+index d5600b1..27a1ecf 100755
+--- a/include/vio.h
++++ b/include/vio.h
+@@ -108,7 +108,7 @@ public:
+ 
+   double img_point_cov, outlier_threshold, ncc_thre;
+   
+-  SubSparseMap *visual_submap;
++  SubSparseMap *visual_submap = nullptr;
+   std::vector<std::vector<V3D>> rays_with_sample_points;
+ 
+   double compute_jacobian_time, update_ekf_time;
+diff --git a/package.xml b/package.xml
+index c2eedfa..05bb0d4 100755
+--- a/package.xml
++++ b/package.xml
+@@ -16,6 +16,7 @@
+ 
+   <author email="zhangji@cmu.edu">Ji Zhang</author>
+   
++  <build_depend>livox_ros_driver</build_depend>
+   <buildtool_depend>catkin</buildtool_depend>
+   <build_depend>geometry_msgs</build_depend>
+   <build_depend>nav_msgs</build_depend>
+diff --git a/src/LIVMapper.cpp b/src/LIVMapper.cpp
+index 15af354..14d4942 100755
+--- a/src/LIVMapper.cpp
++++ b/src/LIVMapper.cpp
+@@ -11,6 +11,7 @@ which is included as part of this source code package.
+ */
+ 
+ #include "LIVMapper.h"
++#include <std_msgs/Float64.h>
+ 
+ LIVMapper::LIVMapper(ros::NodeHandle &nh)
+     : extT(0, 0, 0),
+@@ -119,32 +120,39 @@ void LIVMapper::readParameters(ros::NodeHandle &nh)
+ void LIVMapper::initializeComponents() 
+ {
+   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
++  if (extrinT.size() != 3 || extrinR.size() != 9)
++    throw std::runtime_error("LiDAR-to-IMU extrinsic_T/R must contain 3/9 values.");
+   extT << VEC_FROM_ARRAY(extrinT);
+   extR << MAT_FROM_ARRAY(extrinR);
+ 
+   voxelmap_manager->extT_ << VEC_FROM_ARRAY(extrinT);
+   voxelmap_manager->extR_ << MAT_FROM_ARRAY(extrinR);
+ 
+-  if (!vk::camera_loader::loadFromRosNs("laserMapping", vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
+-
+-  vio_manager->grid_size = grid_size;
+-  vio_manager->patch_size = patch_size;
+-  vio_manager->outlier_threshold = outlier_threshold;
+-  vio_manager->setImuToLidarExtrinsic(extT, extR);
+-  vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
+-  vio_manager->state = &_state;
+-  vio_manager->state_propagat = &state_propagat;
+-  vio_manager->max_iterations = max_iterations;
+-  vio_manager->img_point_cov = IMG_POINT_COV;
+-  vio_manager->normal_en = normal_en;
+-  vio_manager->inverse_composition_en = inverse_composition_en;
+-  vio_manager->raycast_en = raycast_en;
+-  vio_manager->grid_n_width = grid_n_width;
+-  vio_manager->grid_n_height = grid_n_height;
+-  vio_manager->patch_pyrimid_level = patch_pyrimid_level;
+-  vio_manager->exposure_estimate_en = exposure_estimate_en;
+-  vio_manager->colmap_output_en = colmap_output_en;
+-  vio_manager->initializeVIO();
++  if (img_en)
++  {
++    if (cameraextrinT.size() != 3 || cameraextrinR.size() != 9)
++      throw std::runtime_error("Camera Pcl/Rcl must contain 3/9 values.");
++    if (!vk::camera_loader::loadFromRosNs("laserMapping", vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
++
++    vio_manager->grid_size = grid_size;
++    vio_manager->patch_size = patch_size;
++    vio_manager->outlier_threshold = outlier_threshold;
++    vio_manager->setImuToLidarExtrinsic(extT, extR);
++    vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
++    vio_manager->state = &_state;
++    vio_manager->state_propagat = &state_propagat;
++    vio_manager->max_iterations = max_iterations;
++    vio_manager->img_point_cov = IMG_POINT_COV;
++    vio_manager->normal_en = normal_en;
++    vio_manager->inverse_composition_en = inverse_composition_en;
++    vio_manager->raycast_en = raycast_en;
++    vio_manager->grid_n_width = grid_n_width;
++    vio_manager->grid_n_height = grid_n_height;
++    vio_manager->patch_pyrimid_level = patch_pyrimid_level;
++    vio_manager->exposure_estimate_en = exposure_estimate_en;
++    vio_manager->colmap_output_en = colmap_output_en;
++    vio_manager->initializeVIO();
++  }
+ 
+   p_imu->set_extrinsic(extT, extR);
+   p_imu->set_gyr_cov_scale(V3D(gyr_cov, gyr_cov, gyr_cov));
+@@ -195,7 +203,7 @@ void LIVMapper::initializeSubscribersAndPublishers(ros::NodeHandle &nh, image_tr
+             nh.subscribe(lid_topic, 200000, &LIVMapper::livox_pcl_cbk, this): 
+             nh.subscribe(lid_topic, 200000, &LIVMapper::standard_pcl_cbk, this);
+   sub_imu = nh.subscribe(imu_topic, 200000, &LIVMapper::imu_cbk, this);
+-  sub_img = nh.subscribe(img_topic, 200000, &LIVMapper::img_cbk, this);
++  if (img_en) sub_img = nh.subscribe(img_topic, 200000, &LIVMapper::img_cbk, this);
+   
+   pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100);
+   pubNormal = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker", 100);
+@@ -549,6 +557,11 @@ void LIVMapper::run()
+     // if (!p_imu->imu_time_init) continue;
+ 
+     stateEstimationAndMapping();
++    static ros::NodeHandle timing_nh;
++    static ros::Publisher timing_pub = timing_nh.advertise<std_msgs::Float64>("/go2w_lio/processing_lag", 1);
++    std_msgs::Float64 lag;
++    lag.data = ros::Time::now().toSec() - LidarMeasures.last_lio_update_time;
++    timing_pub.publish(lag);
+   }
+   savePCD();
+ }
+@@ -705,16 +718,25 @@ void LIVMapper::standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
+   if (!lidar_en) return;
+   mtx_buffer.lock();
+ 
++  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
++  p_pre->process(msg, ptr);
++  if (ptr->size() <= 1)
++  {
++    ROS_WARN_THROTTLE(5.0, "Discarding cloud with fewer than two usable points");
++    mtx_buffer.unlock();
++    return;
++  }
++
+   double cur_head_time = msg->header.stamp.toSec() + lidar_time_offset;
+   // cout<<"got feature"<<endl;
+   if (cur_head_time < last_timestamp_lidar)
+   {
+     ROS_ERROR("lidar loop back, clear buffer");
+     lid_raw_data_buffer.clear();
++    lid_header_time_buffer.clear();
++    lidar_pushed = false;
+   }
+   // ROS_INFO("get point cloud at time: %.6f", msg->header.stamp.toSec());
+-  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+-  p_pre->process(msg, ptr);
+   lid_raw_data_buffer.push_back(ptr);
+   lid_header_time_buffer.push_back(cur_head_time);
+   last_timestamp_lidar = cur_head_time;
+@@ -1337,7 +1359,7 @@ void LIVMapper::publish_odometry(const ros::Publisher &pubOdomAftMapped)
+ {
+   odomAftMapped.header.frame_id = "camera_init";
+   odomAftMapped.child_frame_id = "aft_mapped";
+-  odomAftMapped.header.stamp = ros::Time::now(); //.ros::Time()fromSec(last_timestamp_lidar);
++  odomAftMapped.header.stamp = ros::Time().fromSec(LidarMeasures.last_lio_update_time); //.ros::Time()fromSec(last_timestamp_lidar);
+   set_posestamp(odomAftMapped.pose.pose);
+ 
+   static tf::TransformBroadcaster br;
+diff --git a/src/preprocess.cpp b/src/preprocess.cpp
+index afe3414..eb092a7 100755
+--- a/src/preprocess.cpp
++++ b/src/preprocess.cpp
+@@ -11,6 +11,8 @@ which is included as part of this source code package.
+ */
+ 
+ #include "preprocess.h"
++#include <algorithm>
++#include <utility>
+ 
+ #define RETURN0 0x00
+ #define RETURN0AND1 0x10
+@@ -569,9 +571,32 @@ void Preprocess::xt32_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+   pl_corn.clear();
+   pl_full.clear();
+ 
++  // Reject malformed/empty input before PCL conversion or indexing first/last points.
++  if (msg->width == 0 || msg->height == 0) return;
++  const std::pair<const char*, uint8_t> required[] = {
++      {"x", sensor_msgs::PointField::FLOAT32}, {"y", sensor_msgs::PointField::FLOAT32},
++      {"z", sensor_msgs::PointField::FLOAT32}, {"intensity", sensor_msgs::PointField::FLOAT32},
++      {"ring", sensor_msgs::PointField::UINT16}, {"timestamp", sensor_msgs::PointField::FLOAT64}};
++  for (const auto& field : required)
++  {
++    const auto found = std::find_if(msg->fields.begin(), msg->fields.end(),
++        [&](const sensor_msgs::PointField& f) { return f.name == field.first; });
++    if (found == msg->fields.end() || found->datatype != field.second || found->count != 1)
++    {
++      ROS_ERROR_THROTTLE(2.0, "XT input needs x/y/z/intensity float32, ring uint16, timestamp float64 seconds");
++      return;
++    }
++    const size_t bytes = field.second == sensor_msgs::PointField::FLOAT64 ? 8 :
++                         field.second == sensor_msgs::PointField::UINT16 ? 2 : 4;
++    if (uint64_t(found->offset) + bytes > msg->point_step) return;
++  }
++  if (uint64_t(msg->width) * msg->point_step > msg->row_step ||
++      uint64_t(msg->row_step) * msg->height > msg->data.size()) return;
++
+   pcl::PointCloud<xt32_ros::Point> pl_orig;
+   pcl::fromROSMsg(*msg, pl_orig);
+   int plsize = pl_orig.points.size();
++  if (plsize == 0) return;
+   pl_surf.reserve(plsize);
+ 
+   bool is_first[MAX_LINE_NUM];

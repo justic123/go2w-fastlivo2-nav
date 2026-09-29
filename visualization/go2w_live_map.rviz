@@ -1,0 +1,117 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 30; 30; 35
+    Fixed Frame: camera_init
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/Marker
+      Name: Mapping data status
+      Enabled: true
+      Topic:
+        Value: /go2w_view/status
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 30
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Live RGB map
+      Enabled: true
+      Topic:
+        Value: /go2w_view/cloud
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 5
+      Size (Pixels): 5
+      Size (m): 0.025
+      Style: Points
+      Color Transformer: RGB8
+      Axis: Z
+      Position Transformer: XYZ
+      Decay Time: 0
+    - Class: rviz_default_plugins/Path
+      Name: Trajectory
+      Enabled: true
+      Topic:
+        Value: /go2w_view/path
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Color: 255; 80; 40
+      Line Style: Lines
+      Line Width: 0.04
+    - Class: rviz_default_plugins/Image
+      Name: VIO tracked features
+      Enabled: true
+      Topic:
+        Value: /go2w_view/image
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 2
+      Normalize Range: true
+    - Class: rviz_default_plugins/Image
+      Name: Live camera (SDK)
+      Enabled: true
+      Topic:
+        Value: /go2w_view/camera
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 2
+      Normalize Range: true
+    - Class: rviz_default_plugins/Map
+      Name: Navigation costmap
+      Enabled: false
+      Topic:
+        Value: /go2w_nav_view/costmap
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Alpha: 0.6
+      Color Scheme: costmap
+    - Class: rviz_default_plugins/Path
+      Name: Planned path
+      Enabled: true
+      Topic:
+        Value: /go2w_nav_view/plan
+        Reliability Policy: Reliable
+        Durability Policy: Transient Local
+        Depth: 1
+      Color: 30; 240; 80
+      Line Style: Lines
+      Line Width: 0.06
+    - Class: rviz_default_plugins/Marker
+      Name: Current fusion heading
+      Enabled: true
+      Topic:
+        Value: /go2w_view/robot_heading
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        Depth: 1
+      Color: 255; 210; 0
+      Shape: Arrow
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 12
+      Pitch: 0.65
+      Yaw: 3.14
+      Focal Point:
+        X: 2.5
+        Y: 0
+        Z: 0
+Window Geometry:
+  Width: 1600
+  Height: 1000

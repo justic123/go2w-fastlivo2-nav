@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.16)
+project(go2w_livo_point_guard)
+set(CMAKE_CXX_STANDARD 17)
+find_package(unitree_sdk2 REQUIRED)
+add_executable(sport_guard sport_guard.cpp)
+target_include_directories(sport_guard PRIVATE /unitree/module/unitree_slam/example/include)
+target_link_libraries(sport_guard unitree_sdk2)

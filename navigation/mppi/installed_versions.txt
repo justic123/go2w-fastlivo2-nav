@@ -1,0 +1,4 @@
+ros-humble-nav2-controller	1.1.20-1jammy.20260908.005456
+ros-humble-nav2-mppi-controller	1.1.20-1jammy.20260908.012051
+ros-humble-navigation2	1.1.20-1jammy.20260908.015443
+sha256:20b36ec3069b5502dfc2bbc53298c8b64e20f1094ac86c27b4a6406d1da5092e

@@ -1,0 +1,10 @@
+{
+  "README.md": "7cdb899b073e35c33c7fae3fe7f0657f12175d9c33f11d7b270e7fea20ea7657",
+  "livo_candidate.yaml": "e970285fba759d3b0bd443e0cb2fa9e9921a060b14689a67fdda544b47abbae4",
+  "camera_candidate.yaml": "20d9d21f05e826c516e16ec91bbeca12d1a45ace78a45a1655676f4488c7f6a0",
+  "run_board_livo.sh": "8810de2d7b294847046df5696e68e6f321ef10ae12cb592ad2a677ae38e830ac",
+  "decode_jpeg.py": "20567d5514efaa993626a47a022eab13ecbb82b93d82d36d85db850358eb34fa",
+  "analyze_run.py": "b15f78bec7c1d215c649a23db4b0269ed344f3535658e5fc250f4c8cafec61a2",
+  "jpeg_source/main.cpp": "ddf27affc7b96a797e1510cef5ce10155565134b4cee2ded8f853957b79893f8",
+  "jpeg_source/CMakeLists.txt": "c27b1a6b018c1b9315b6cbaed1f49f6997ca07c60a6811c61b7f30959733ebf2"
+}

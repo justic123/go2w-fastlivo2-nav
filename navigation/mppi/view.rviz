@@ -1,0 +1,69 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: map
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+    - Class: rviz_default_plugins/TF
+      Name: Coordinate axes (not robot heading)
+      Enabled: false
+    - Class: rviz_default_plugins/Map
+      Name: Live navigation costmap
+      Enabled: true
+      Alpha: 0.5
+      Topic:
+        Value: /global_costmap/costmap
+        Durability Policy: Transient Local
+    - Class: rviz_default_plugins/Path
+      Name: Planned path
+      Enabled: true
+      Topic:
+        Value: /plan
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Current lidar
+      Enabled: true
+      Topic:
+        Value: /mppi/cloud
+        Reliability Policy: Best Effort
+      Size (Pixels): 2
+      Style: Points
+    - Class: rviz_default_plugins/PointCloud2
+      Name: Saved room map
+      Enabled: true
+      Topic:
+        Value: /saved_map/cloud
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Size (Pixels): 1
+      Style: Points
+    - Class: rviz_default_plugins/Marker
+      Name: Robot forward (body +X)
+      Enabled: true
+      Topic:
+        Value: /mppi/body_heading
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+    - Class: rviz_default_plugins/Map
+      Name: Saved floor map (room-20260928)
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Alpha: 0.5
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Scale: 60
+Window Geometry:
+  Width: 1200
+  Height: 850
