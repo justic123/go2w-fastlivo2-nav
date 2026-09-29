@@ -89,7 +89,11 @@ def archive_state():
 def validate_registration(candidate,ident,session):
  import numpy as np
  if candidate.get('map_id')!=ident or candidate.get('source_session')!=session:raise RuntimeError('重定位结果地图/会话不一致')
- if not candidate.get('accepted') or candidate.get('consensus',0)<3:raise RuntimeError('自动匹配未通过或存在歧义，保持停稳；不要启动导航')
+ if not candidate.get('accepted') or candidate.get('consensus',0)<3:
+  detail=''
+  if candidate.get('method')=='user_hint_multistart_icp':
+   detail='；提示位置修正 %.3fm（须<0.75m），朝向修正 %.3frad（须<0.35rad），一致候选 %s（须≥4）'%(candidate.get('hint_correction_m',float('nan')),candidate.get('hint_correction_rad',float('nan')),candidate.get('consensus',0))
+  raise RuntimeError('地图匹配未通过或存在歧义'+detail+'；保持停稳，不要启动导航')
  if not 0<=time.time()-candidate.get('created',0)<60:raise RuntimeError('重定位结果已过期')
  T=np.asarray(candidate['transform'],dtype=float)
  if T.shape!=(4,4) or not np.isfinite(T).all() or not np.allclose(T[3],[0,0,0,1]) or not np.allclose(T[:3,:3].T@T[:3,:3],np.eye(3),atol=1e-5) or not np.isclose(np.linalg.det(T[:3,:3]),1,atol=1e-5):raise RuntimeError('重定位变换无效')

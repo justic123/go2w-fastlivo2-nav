@@ -3,15 +3,16 @@
 import json,os,signal,subprocess,sys,time,shutil,fcntl,socket
 from pathlib import Path
 from service_core import ROOT,atomic,read,birth,alive,owned_alive,signal_owned
+from recording_policy import AuxiliaryRecording
 service,run=sys.argv[1:3];folder=ROOT/run;folder.mkdir(exist_ok=True)
-stop=False;items=[];handles=[];primary=[];error=None;phase='starting';bag_sealed=False
+stop=False;items=[];handles=[];primary=[];error=None;phase='starting';bag_sealed=False;aux_recording=None;recorder=None
 lock=(ROOT/(service+'_pipeline_v2.lock')).open('a')
 try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 except BlockingIOError:atomic(folder/'runtime.json',dict(phase='failed',children=[],error='Pipeline lock already held'));raise SystemExit(1)
 def status(new_phase=None):
  global phase
  if new_phase:phase=new_phase
- atomic(folder/'runtime.json',dict(phase=phase,children=items,error=error,updated=time.time(),bag_sealed=bag_sealed,supervisor_pid=os.getpid()))
+ atomic(folder/'runtime.json',dict(phase=phase,children=items,error=error,updated=time.time(),bag_sealed=bag_sealed,supervisor_pid=os.getpid(),recording=aux_recording.state if aux_recording else None))
 def request_stop(*_):
  global stop
  stop=True
@@ -83,6 +84,9 @@ try:
    try:sock.bind(('127.0.0.1',port))
    except OSError:raise RuntimeError('Port %d still in use by another process'%port)
  if service=='capture':
+  free_bytes=shutil.disk_usage(ROOT).free
+  if free_bytes<5*1024**3:raise RuntimeError('Disk reserve reached before capture startup')
+  if sensor_only:aux_recording=AuxiliaryRecording(free_bytes)
   # Unknown or legacy owners are reported, not killed. Never claim a second sensor stack.
   for procdir in Path('/proc').iterdir():
    if not procdir.name.isdigit():continue
@@ -102,7 +106,9 @@ try:
    except subprocess.TimeoutExpired:return False
   wait_for(master_ready,12)
   for cfg,ns in [(ROOT/'mapping/livo_display_candidate.yaml','/go2w_lio'),(ROOT/'camera/livo_diagnostic/camera_candidate.yaml','/go2w_lio/laserMapping')]:subprocess.run(['/opt/ros/noetic/bin/rosparam','load',str(cfg),ns],env=env,timeout=5,check=True)
-  launch('bag',['/opt/ros/noetic/lib/rosbag/record','--lz4','--buffsize','256','-O',str(folder/'sensors.bag'),'/go2w_lio/points','/go2w_lio/imu','/go2w_lio/cloud','/go2w_lio/odometry','/go2w_livo/jpeg'],env)
+  if not aux_recording or aux_recording.state['phase']=='running':
+   recorder=launch('bag',['/opt/ros/noetic/lib/rosbag/record','--lz4','--buffsize','256','-O',str(folder/'sensors.bag'),'/go2w_lio/points','/go2w_lio/imu','/go2w_lio/cloud','/go2w_lio/odometry','/go2w_livo/jpeg'],env)
+   if aux_recording:primary.remove(recorder)
   if sensor_only:launch('view',['python3',str(ROOT/'lifecycle/raw_source.py'),str(folder/'transport_status.json')],env)
   else:launch('view',['python3',str(ROOT/'mapping/ros1_view_source.py')],env)
   if not sensor_only:launch('node',[str(ROOT/'ws/devel/lib/fast_livo/fastlivo_mapping'),'__ns:=/go2w_lio','/aft_mapped_to_init:=/go2w_lio/odometry','/cloud_registered:=/go2w_lio/cloud','/path:=/go2w_lio/path','/mavros/vision_pose/pose:=/go2w_lio/unused_pose'],env)
@@ -146,7 +152,12 @@ try:
  while not stop:
   dead=[x['role'] for x in primary if not alive(x)]
   if dead:raise RuntimeError('Pipeline child exited: '+','.join(dead))
-  if service=='capture' and shutil.disk_usage(ROOT).free<5*1024**3:raise RuntimeError('Disk reserve reached')
+  if service=='capture':
+   free_bytes=shutil.disk_usage(ROOT).free
+   if aux_recording:
+    aux_recording.tick(free_bytes,time.monotonic(),alive(recorder),lambda:signal_owned(recorder,signal.SIGINT,True))
+    bag_sealed=(folder/'sensors.bag').exists() and not (folder/'sensors.bag.active').exists()
+   elif free_bytes<5*1024**3:raise RuntimeError('Disk reserve reached')
   if time.monotonic()>=next_scan:discover_descendants();next_scan=time.monotonic()+2
   time.sleep(.2)
 except Exception as e:error=str(e);print(error,flush=True)
@@ -168,6 +179,8 @@ finally:
   for item in items:
    if item['role']=='descendant':stop_child(item,signal.SIGTERM,2)
   bag_sealed=(folder/'sensors.bag').exists() and not (folder/'sensors.bag.active').exists()
+  if aux_recording and recorder:
+   aux_recording.state.update(phase='closed' if bag_sealed else 'unsealed')
   (folder/'state_logs').mkdir(exist_ok=True)
   for name in ['mat_pre.txt','mat_out.txt']:
    try:shutil.copy2(ROOT/'ws/src/FAST-LIVO2/Log'/name,folder/'state_logs'/name)
