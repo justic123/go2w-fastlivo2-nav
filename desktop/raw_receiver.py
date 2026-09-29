@@ -20,14 +20,17 @@ with socket.create_connection(('127.0.0.1',11329),timeout=5) as c:
  c.settimeout(3);samples=[]
  for _ in range(5):
   t=time.time();c.sendall(b'T');remote=struct.unpack('!d',exact(c,8))[0];end=time.time();samples.append((end-t,(t+end)/2-remote))
- rtt,offset=min(samples);print(json.dumps(dict(clock_offset=offset,min_rtt_s=rtt)),flush=True);counts=[0,0,0];last=0
+ rtt,offset=min(samples);print(json.dumps(dict(clock_offset=offset,min_rtt_s=rtt)),flush=True);counts=[0,0,0];last=0;maxima={};previous_packet=time.monotonic()
  while not rospy.is_shutdown():
+  read_started=time.monotonic()
   kind,n,sent=struct.unpack('!BId',exact(c,13))
+  header_wait=time.monotonic()-read_started
   # Drive ROS time from the same source clock as all sensor stamps.
   # The fixed epoch offset preserves every sensor interval; host drift is not sensor delay.
   clock_pub.publish(Clock(clock=rospy.Time.from_sec(sent+offset)))
   if kind>2 or n>16000000:raise ValueError('Invalid sensor packet')
-  m=classes[kind]();m.deserialize(exact(c,n));m.header.stamp=rospy.Time.from_sec(m.header.stamp.to_sec()+offset)
+  payload_started=time.monotonic();payload=exact(c,n);payload_wait=time.monotonic()-payload_started
+  processing_started=time.monotonic();m=classes[kind]();m.deserialize(payload);m.header.stamp=rospy.Time.from_sec(m.header.stamp.to_sec()+offset)
   if kind==1:
    field=next(f for f in m.fields if f.name=='timestamp')
    if field.datatype!=8 or m.is_bigendian:raise ValueError('Expected float64 little-endian absolute point timestamp')
@@ -36,6 +39,9 @@ with socket.create_connection(('127.0.0.1',11329),timeout=5) as c:
   phase=guards[kind].check(age,time.monotonic())
   metrics[['imu','cloud','jpeg'][kind]]=dict(age_s=age,phase=phase,count=counts[kind]+1)
   if phase=='catching_up':rospy.logwarn_throttle(1,'Catching up sensor %d age %.3fs; navigation must remain age-gated'%(kind,age))
-  pubs[kind].publish(m);counts[kind]+=1
+  publish_started=time.monotonic();pubs[kind].publish(m);counts[kind]+=1
+  now=time.monotonic();timing=dict(header_wait_s=header_wait,payload_wait_s=payload_wait,decode_s=publish_started-processing_started,publish_s=now-publish_started,packet_gap_s=now-previous_packet);previous_packet=now
+  for key,value in timing.items():maxima[key]=max(maxima.get(key,0.),value)
+  metrics[['imu','cloud','jpeg'][kind]].update(timing)
   if time.monotonic()-last>1:
-   state_path=Path(sys.argv[1]);tmp=state_path.with_suffix('.tmp');tmp.write_text(json.dumps(dict(per_topic=metrics,counts=counts,clock_offset=offset,min_rtt_s=rtt,last_input_age_s=age,host_clock_difference_s=time.time()-(sent+offset),updated=time.time())));tmp.replace(state_path);last=time.monotonic()
+   state_path=Path(sys.argv[1]);tmp=state_path.with_suffix('.tmp');tmp.write_text(json.dumps(dict(per_topic=metrics,maxima=maxima,counts=counts,clock_offset=offset,min_rtt_s=rtt,last_input_age_s=age,host_clock_difference_s=time.time()-(sent+offset),updated=time.time())));tmp.replace(state_path);last=time.monotonic()

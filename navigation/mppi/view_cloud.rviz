@@ -5,21 +5,41 @@ Visualization Manager:
   Class: ''
   Global Options:
     Fixed Frame: map
+    Background Color: 35; 38; 43
   Displays:
-  - Class: rviz_default_plugins/Grid
-    Name: Grid
-    Enabled: true
-  - Class: rviz_default_plugins/TF
-    Name: Coordinate axes (not robot heading)
-    Enabled: false
   - Class: rviz_default_plugins/Map
-    Name: Live navigation costmap
+    Name: Saved map (available offline)
     Enabled: true
-    Alpha: 0.5
+    Alpha: 1.0
+    Color Scheme: map
+    Draw Behind: true
+    Topic:
+      Value: /demo/saved_map
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+  - Class: rviz_default_plugins/Map
+    Name: Global obstacles + inflation (live)
+    Enabled: false
+    Alpha: 0.75
+    Color Scheme: costmap
+    Draw Behind: false
     Topic:
       Value: /global_costmap/costmap
       Durability Policy: Transient Local
-    Color Scheme: map
+      Reliability Policy: Reliable
+  - Class: rviz_default_plugins/Map
+    Name: Local obstacles + inflation (live)
+    Enabled: false
+    Alpha: 0.85
+    Color Scheme: costmap
+    Draw Behind: false
+    Topic:
+      Value: /local_costmap/costmap
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+  - Class: rviz_default_plugins/TF
+    Name: Coordinate axes (not robot heading)
+    Enabled: false
   - Class: rviz_default_plugins/Path
     Name: Planned path
     Enabled: true
@@ -49,28 +69,9 @@ Visualization Manager:
       Value: /mppi/body_heading
       Reliability Policy: Reliable
       Durability Policy: Volatile
-  - Class: rviz_default_plugins/Map
-    Name: Saved floor map (available offline)
-    Enabled: true
-    Topic:
-      Value: /demo/saved_map
-      Durability Policy: Transient Local
-      Reliability Policy: Reliable
-    Alpha: 0.5
-    Color Scheme: map
-  - Class: rviz_default_plugins/Map
-    Name: Local obstacles + inflation (live)
-    Enabled: false
-    Alpha: 0.5
-    Color Scheme: map
-    Draw Behind: false
-    Topic:
-      Value: /local_costmap/costmap
-      Durability Policy: Transient Local
-      Reliability Policy: Reliable
   - Class: rviz_default_plugins/Polygon
     Name: Robot footprint (live)
-    Enabled: false
+    Enabled: true
     Color: 0; 255; 120
     Topic:
       Value: /local_costmap/published_footprint
@@ -110,7 +111,9 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/TopDownOrtho
-      Scale: 60
+      Scale: 70.0
+      X: 0.0
+      Y: 0.0
 Window Geometry:
   Width: 1200
   Height: 850

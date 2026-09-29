@@ -12,7 +12,11 @@ from tf2_ros import Buffer,TransformListener
 from guard_proxy import Guard
 sys.path.insert(0,'/tmp/mppi_policy')
 from motion_policy import swept_clear
+from route_model import stationary,leg_timeout
 root=Path(__file__).resolve().parent;current=json.loads((root/'current.json').read_text());state=Path('/state');target=json.loads((state/'accuracy_target.json').read_text());execute='--execute' in sys.argv
+timeout_s=int(sys.argv[sys.argv.index('--timeout')+1]) if '--timeout' in sys.argv else 90
+if not 10<=timeout_s<=1770:raise ValueError('Invalid execution deadline')
+route_action='--route' in sys.argv
 lock=(state/'motion.lock').open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 rclpy.init();n=Node('mppi_protected_action',parameter_overrides=[rclpy.parameter.Parameter('use_sim_time',value=True)]);buf=Buffer();listener=TransformListener(buf,n)
 pose=None;grid=None;command=None;pose_received=0.;grid_received=0.;fault=None;stop_requested=False;history=[];goal=None;guard=None
@@ -56,7 +60,7 @@ def cmd(m):
  command=([m.linear.x,m.linear.y,m.angular.z],time.monotonic())
 n.create_subscription(Odometry,'/mppi/odom',odom,10);n.create_subscription(Twist,'/mppi/cmd_vel_smoothed',cmd,1);n.create_subscription(OccupancyGrid,'/local_costmap/costmap',costs,QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
 def healthy():
- if stop_requested:raise RuntimeError('User interrupted')
+ if stop_requested or (route_action and (state/'route_cancel.request').exists()):raise RuntimeError('User interrupted')
  if fault:raise RuntimeError(fault)
  now=time.monotonic()
  if pose is None or grid is None or now-pose_received>.4 or now-grid_received>.8:
@@ -97,6 +101,7 @@ try:
  if not pg.accepted:raise RuntimeError('Planner rejected target')
  planned=wait(pg.get_result_async());result['path_points']=len(planned.result.path.poses)
  if planned.status!=4 or not result['path_points']:raise RuntimeError('No valid path')
+ path_xy=[(v.pose.position.x,v.pose.position.y) for v in planned.result.path.poses];result['planned_length_m']=sum(math.dist(a,b) for a,b in zip(path_xy,path_xy[1:]));result['recommended_timeout_s']=leg_timeout(result['planned_length_m'])
  healthy();nav=ActionClient(n,NavigateToPose,'/navigate_to_pose')
  if not nav.wait_for_server(timeout_sec=3):raise RuntimeError('No navigator')
  (state/'motion_active').write_text(json.dumps(dict(execute=execute,started=time.time())))
@@ -104,7 +109,7 @@ try:
  if not goal.accepted:raise RuntimeError('Navigate goal rejected')
  done=goal.get_result_async();start=time.monotonic();count=0
  with (state/('motion-commands-'+time.strftime('%Y%m%d-%H%M%S')+'.jsonl')).open('w') as log:
-  while not done.done() and time.monotonic()-start<(90 if execute else 8):
+  while not done.done() and time.monotonic()-start<(timeout_s if execute else 8):
    tick=time.monotonic();rclpy.spin_once(n,timeout_sec=.01);healthy()
    if command is None:
     if tick-start>1:raise RuntimeError('Controller did not produce commands')
@@ -126,7 +131,7 @@ try:
   result['navigation_status']=done.result().status
   if done.result().status!=4:result['reason']='Nav2 action ended with status '+str(done.result().status)+'; inspect controller/planner logs'
  else:result['reason']='Execution deadline' if execute else 'Preview duration reached'
- result['commands']=count
+ result['commands']=count;result['timeout_s']=timeout_s
 except Exception as e:
  result['reason']=str(e)
  if getattr(e,'stop',None):result['guard_stop']=e.stop
@@ -142,7 +147,7 @@ finally:
  end=time.monotonic()+2
  while time.monotonic()<end:rclpy.spin_once(n,timeout_sec=.02)
  try:
-  healthy();last=map_pose();result['last_pose']=last;result['estimated_xy_error']=math.hypot(last[0]-target['pose'][0],last[1]-target['pose'][1]);result['estimated_yaw_error']=abs(angle(last[2]-target['pose'][2]));result['success']=execute and result.get('navigation_status')==4 and result['estimated_xy_error']<=.08 and result['estimated_yaw_error']<=.12 and result.get('guard_stop',{}).get('stop_code')==0
+  healthy();last=map_pose();result['last_pose']=last;result['estimated_xy_error']=math.hypot(last[0]-target['pose'][0],last[1]-target['pose'][1]);result['estimated_yaw_error']=abs(angle(last[2]-target['pose'][2]));result['stationary_after_stop']=stationary(history);result['success']=execute and result['stationary_after_stop'] and result.get('navigation_status')==4 and result['estimated_xy_error']<=.08 and result['estimated_yaw_error']<=.12 and result.get('guard_stop',{}).get('stop_code')==0
  except Exception as e:result['final_health_error']=str(e)
  result['preview_passed']=not execute and not result.get('final_health_error') and result.get('guard_stop',{}).get('stop_code')==0 and (result.get('navigation_status')==4 or result.get('reason')=='Preview duration reached')
  if collision_snapshot is not None:

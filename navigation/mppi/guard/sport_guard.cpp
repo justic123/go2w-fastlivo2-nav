@@ -18,8 +18,8 @@ static volatile sig_atomic_t stop_flag=0;
 void stop_signal(int){stop_flag=1;}
 double mono(){timespec t{};clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec*1e-9;}
 int main(int argc,char**argv){
- bool preview_mppi=argc==3 && std::string(argv[2])=="--preview-mppi";
- bool mppi=preview_mppi || (argc==3 && std::string(argv[2])=="--execute-mppi");
+ bool preview_mppi=(argc==3||argc==4) && std::string(argv[2])=="--preview-mppi";
+ bool mppi=preview_mppi || ((argc==3||argc==4) && std::string(argv[2])=="--execute-mppi");
  bool preview_floor=argc==3 && std::string(argv[2])=="--preview-floor";
  bool floor=preview_floor || (argc==3 && std::string(argv[2])=="--execute-floor");
  bool preview_nav=argc==3 && std::string(argv[2])=="--preview-nav";
@@ -31,17 +31,19 @@ int main(int argc,char**argv){
  bool preview_startup=argc==3 && std::string(argv[2])=="--preview-startup";
  bool startup=preview_startup || (argc==3 && std::string(argv[2])=="--execute-startup");
  bool execute=(mppi&&!preview_mppi) || (floor&&!preview_floor) || (nav&&!preview_nav) || (point&&!preview_point) || (startup&&!preview_startup) || (argc==3 && std::string(argv[2])=="--execute");
- if(argc<2||argc>3||(argc==3&&!execute&&!probe&&!balance&&!preview_startup&&!preview_point&&!preview_nav&&!preview_floor&&!preview_mppi))return 2;
+ if(argc<2||argc>4||(argc==4&&!mppi)||(argc==3&&!execute&&!probe&&!balance&&!preview_startup&&!preview_point&&!preview_nav&&!preview_floor&&!preview_mppi))return 2;
  signal(SIGINT,stop_signal);signal(SIGTERM,stop_signal);
  std::unique_ptr<unitree::robot::go2::SportClient> client;
  if(execute||probe||balance)unitree::robot::ChannelFactory::Instance()->Init(0,argv[1]);
  if(execute||balance){client.reset(new unitree::robot::go2::SportClient());client->SetTimeout(.15f);client->Init();}
  if(balance){client->SetTimeout(2.f);std::this_thread::sleep_for(std::chrono::seconds(1));int code=client->BalanceStand();std::cout<<nlohmann::json({{"action","BalanceStand"},{"code",code}}).dump()<<std::endl;return code==0?0:1;}
  if(probe){std::atomic<int> count{0};unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_> sub("rt/lf/sportmodestate");sub.InitChannel([&](const void* raw){auto m=static_cast<const unitree_go::msg::dds_::SportModeState_*>(raw);if(count++==0)std::cout<<nlohmann::json({{"mode",m->mode()},{"gait_type",m->gait_type()},{"velocity",m->velocity()},{"yaw_speed",m->yaw_speed()}}).dump()<<std::endl;},1);std::this_thread::sleep_for(std::chrono::seconds(5));std::cout<<nlohmann::json({{"received",count.load()},{"read_only",true}}).dump()<<std::endl;return count>0?0:1;}
+ double hard_timeout=mppi?125:floor?1805:nav?65:startup?2.5:point?8.5:20;
+ if(argc==4){try{std::size_t used=0;hard_timeout=std::stod(argv[3],&used);if(used!=std::string(argv[3]).size()||!std::isfinite(hard_timeout)||hard_timeout<5||hard_timeout>1800)return 2;}catch(...){return 2;}}
  // 独立停车上限：点到点8.5秒；上层8秒退出。断流0.3秒停车，不允许自动重试。
  const double start=mono();double last=start;bool active=false;std::string pending,reason="timeout";int result=0;
- std::cout<<"{\"ready\":true,\"execute\":"<<(execute?"true":"false")<<"}"<<std::endl;
- while(!stop_flag && mono()-start<(mppi?125:floor?1805:nav?65:startup?2.5:point?8.5:20)){
+ std::cout<<nlohmann::json({{"ready",true},{"execute",execute},{"hard_timeout_s",hard_timeout}}).dump()<<std::endl;
+ while(!stop_flag && mono()-start<hard_timeout){
   pollfd p{STDIN_FILENO,POLLIN,0};int status=poll(&p,1,40);
   if(status<0){reason="poll_error";break;}
   if(status>0 && (p.revents&(POLLIN|POLLHUP))){

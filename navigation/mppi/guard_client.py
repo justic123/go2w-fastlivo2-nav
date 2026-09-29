@@ -1,7 +1,8 @@
 """SSH transport for the independent board guard; default is non-actuating preview."""
 import subprocess,json,time,threading,queue,math
 class Guard:
- def __init__(self,execute=False):
+ def __init__(self,execute=False,deadline_s=125):
+  if not isinstance(deadline_s,int) or not 5<=deadline_s<=1800:raise ValueError("Guard deadline must be 5..1800 seconds")
   self.rows=[];self.q=queue.Queue();self.offset=None;self.clock_checks=[];self.calibrated_at=0.
   self.p=subprocess.Popen(['ssh','-S','/home/river/.ssh/go2w-mapping.sock','-o','BatchMode=yes','-o','ConnectTimeout=4','unitree@192.168.123.18','python3','/home/unitree/fast_livo2_port/build1/navigation/mppi_guard/relay.py','execute' if execute else 'preview'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
   def read():
@@ -12,8 +13,8 @@ class Guard:
   self.reader=threading.Thread(target=read,daemon=True);self.reader.start()
   try:
    self.calibrate(5)
-   self.write(dict(op='start'));d=self.q.get(timeout=3)
-   if not d.get('ready'):raise RuntimeError('Board guard not ready')
+   self.write(dict(op='start',deadline_s=deadline_s));d=self.q.get(timeout=3)
+   if not d.get('ready') or d.get('hard_timeout_s')!=deadline_s:raise RuntimeError('Board guard deadline capability mismatch; deploy matching guard first')
   except Exception:
    self.close();raise
  def calibrate(self,count=3):

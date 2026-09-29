@@ -3,114 +3,95 @@ Panels:
   Name: Displays
 Visualization Manager:
   Class: ''
-  Global Options:
-    Fixed Frame: map
   Displays:
   - Class: rviz_default_plugins/Grid
+    Enabled: true
     Name: Grid
-    Enabled: true
   - Class: rviz_default_plugins/TF
-    Name: Coordinate axes (not robot heading)
     Enabled: false
-  - Class: rviz_default_plugins/Map
-    Name: Live navigation costmap
-    Enabled: true
-    Alpha: 0.5
-    Topic:
-      Value: /global_costmap/costmap
-      Durability Policy: Transient Local
+    Name: Coordinate axes (not robot heading)
+  - Alpha: 0.5
+    Class: rviz_default_plugins/Map
     Color Scheme: map
-  - Class: rviz_default_plugins/Path
-    Name: Planned path
     Enabled: true
+    Name: Live navigation costmap
+    Topic:
+      Durability Policy: Transient Local
+      Value: /global_costmap/costmap
+  - Class: rviz_default_plugins/Path
+    Enabled: true
+    Name: Planned path
     Topic:
       Value: /plan
   - Class: rviz_default_plugins/PointCloud2
-    Name: Current lidar
     Enabled: true
-    Topic:
-      Value: /mppi/cloud
-      Reliability Policy: Best Effort
+    Name: Current lidar
     Size (Pixels): 2
     Style: Points
-  - Class: rviz_default_plugins/PointCloud2
-    Name: Saved room map
-    Enabled: true
     Topic:
-      Value: /demo/saved_cloud
-      Durability Policy: Transient Local
-      Reliability Policy: Reliable
+      Reliability Policy: Best Effort
+      Value: /mppi/cloud
+  - Class: rviz_default_plugins/PointCloud2
+    Enabled: false
+    Name: Saved room map
     Size (Pixels): 1
     Style: Points
-  - Class: rviz_default_plugins/Marker
-    Name: Robot forward (body +X)
-    Enabled: true
     Topic:
-      Value: /mppi/body_heading
-      Reliability Policy: Reliable
-      Durability Policy: Volatile
-  - Class: rviz_default_plugins/Map
-    Name: Saved floor map (available offline)
-    Enabled: true
-    Topic:
-      Value: /demo/saved_map
       Durability Policy: Transient Local
       Reliability Policy: Reliable
-    Alpha: 0.5
+      Value: /demo/saved_cloud
+  - Class: rviz_default_plugins/Marker
+    Enabled: true
+    Name: Robot forward (body +X)
+    Topic:
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      Value: /mppi/body_heading
+  - Alpha: 0.5
+    Class: rviz_default_plugins/Map
     Color Scheme: map
-  - Class: rviz_default_plugins/Map
-    Name: Local obstacles + inflation (live)
     Enabled: false
-    Alpha: 0.5
+    Name: Saved floor map (available offline)
+    Topic:
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+      Value: /demo/saved_map
+  - Alpha: 0.5
+    Class: rviz_default_plugins/Map
     Color Scheme: map
     Draw Behind: false
-    Topic:
-      Value: /local_costmap/costmap
-      Durability Policy: Transient Local
-      Reliability Policy: Reliable
-  - Class: rviz_default_plugins/Polygon
-    Name: Robot footprint (live)
     Enabled: false
+    Name: Local obstacles + inflation (live)
+    Topic:
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap
+  - Class: rviz_default_plugins/Polygon
     Color: 0; 255; 120
+    Enabled: false
+    Name: Robot footprint (live)
     Topic:
+      Reliability Policy: Reliable
       Value: /local_costmap/published_footprint
-      Reliability Policy: Reliable
   - Class: rviz_default_plugins/Marker
+    Enabled: false
     Name: Localization status (green=live, red=offline)
-    Enabled: true
     Topic:
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
       Value: /demo/view_status
-      Durability Policy: Transient Local
-      Reliability Policy: Reliable
-  - Class: rviz_default_plugins/MarkerArray
-    Name: Saved points + route order + progress
-    Enabled: true
-    Topic:
-      Value: /demo/mission
-      Reliability Policy: Reliable
-      Durability Policy: Transient Local
-  - Class: rviz_default_plugins/Path
-    Name: Entire route PREVIEW (not live control)
-    Enabled: true
-    Color: 0; 210; 255
-    Line Style: Billboards
-    Line Width: 0.035
-    Topic:
-      Value: /demo/route_plan
-      Reliability Policy: Reliable
-      Durability Policy: Transient Local
+  Global Options:
+    Fixed Frame: camera_init
   Tools:
   - Class: rviz_default_plugins/Interact
   - Class: rviz_default_plugins/MoveCamera
   - Class: rviz_default_plugins/Select
   - Class: rviz_default_plugins/SetInitialPose
     Topic: /initialpose
-  - Class: rviz_default_plugins/SetGoal
-    Topic: /demo/goal_pose
   Views:
     Current:
       Class: rviz_default_plugins/TopDownOrtho
       Scale: 60
 Window Geometry:
-  Width: 1200
   Height: 850
+  Width: 1200

@@ -20,7 +20,9 @@ try:
   if obj.get('op')=='clock':
    print(json.dumps(dict(op='clock',token=obj['token'],remote_monotonic=time.monotonic())),flush=True)
   elif obj.get('op')=='start' and child is None:
-   child=subprocess.Popen([str(root/'navigation/mppi_guard/build/mppi_guard'),'eth0','--'+mode+'-mppi'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1)
+   deadline=obj.get('deadline_s',125)
+   if type(deadline) is not int or not 5<=deadline<=1800:raise ValueError('Invalid guard deadline')
+   child=subprocess.Popen([str(root/'navigation/mppi_guard/build/mppi_guard'),'eth0','--'+mode+'-mppi',str(deadline)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1)
    reader=threading.Thread(target=output,daemon=True);reader.start()
   elif child is not None:
    # Preserve sent_monotonic exactly; C++ independently rejects late packets.
