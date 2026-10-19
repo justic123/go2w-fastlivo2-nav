@@ -188,6 +188,10 @@ class StartupRegressionTests(unittest.TestCase):
   with patch.object(c,'assert_no_motion'),patch.object(c,'archive_state'),patch.object(c,'save') as save,patch.object(c,'_start_mapping_services',side_effect=RuntimeError('activation failed')):
    with self.assertRaisesRegex(RuntimeError,'activation failed'):c.start_mapping()
    self.assertEqual(save.call_args.kwargs['phase'],'start_failed')
+ def test_known_launch_blocker_preserves_map_and_never_starts_services(self):
+  with patch.object(c,'assert_no_motion'),patch.object(c,'check_startup',side_effect=RuntimeError('传感器被占用')),patch.object(c,'archive_state') as archive,patch.object(c,'save') as save,patch.object(c,'_start_mapping_services') as start:
+   with self.assertRaisesRegex(RuntimeError,'占用'):c.start_mapping()
+   archive.assert_not_called();save.assert_not_called();start.assert_not_called()
  def test_saved_map_remains_available_after_localization_failure(self):
   saved={'phase':'mapping','map_id':None}
   def fail(d):saved.update(phase='validating_map',map_id='saved-new');raise RuntimeError('localization failed')

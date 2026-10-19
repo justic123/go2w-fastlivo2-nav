@@ -1,0 +1,13 @@
+UI: record gating, recovery guidance and disconnect/recovery tests passed
+UI: map deletion disabled during mapping, missing selection and active jobs
+UI: disconnected controls and stale-action submission blocked
+UI: 3D projection and stale/session-mismatched robot markers tested
+UI: navigation age limits and 3D map identity tested
+UI: fixed anchors remain available for recovery, with busy/offline/map gates
+UI: resume preview, checkpoint token, expiry, dirty state, disconnect and freshness gates tested
+UI: continuation displays only the remaining validated path
+UI: FAST-LIO2 hides cached camera frames and reports disabled vision
+UI: new active map is selected while ordinary polls preserve user choice
+UI: launch blockers are explained and empty map loads are disabled
+UI: Escape cancels after an earlier confirmation
+UI: pan transform and asynchronous save tests passed

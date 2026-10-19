@@ -111,3 +111,20 @@ const oe={$:()=>select,document:{createElement:()=>({})}};vm.createContext(oe);v
 oe.options('maps',['old','new'],'new',true);assert.equal(select.value,'new');
 select.value='old';oe.options('maps',['old','new'],'new',false);assert.equal(select.value,'old');
 console.log('UI: new active map is selected while ordinary polls preserve user choice');
+
+// Escape must cancel even if the previous dialog was confirmed.
+const askCode=source.slice(source.indexOf('function ask('),source.indexOf('async function act('));
+const dialog={returnValue:'yes',showModal(){},addEventListener(event,fn){this.close=fn}};
+const confirmEnv={$:id=>id==='confirm'?dialog:{},Promise};vm.createContext(confirmEnv);vm.runInContext(askCode,confirmEnv);
+(async()=>{const cancelled=confirmEnv.ask('test','test');dialog.close();assert.equal(await cancelled,false);
+ const confirmed=confirmEnv.ask('test','test');dialog.returnValue='yes';dialog.close();assert.equal(await confirmed,true);
+ console.log('UI: Escape cancels after an earlier confirmation');})().catch(e=>{console.error(e);process.exitCode=1});
+const launchCode=source.slice(source.indexOf('function updateLaunchControls('),source.indexOf('function actionLabel('));
+const launchControls={start:{},startupProblem:{},load:{},maps:{value:''}};
+const launchEnv={$:id=>launchControls[id]};vm.createContext(launchEnv);vm.runInContext(launchCode,launchEnv);
+launchEnv.updateLaunchControls({state:{phase:'idle'},startup_problem:'雷达被占用'},false);
+assert.equal(launchControls.start.disabled,true);assert.equal(launchControls.load.disabled,true);assert.equal(launchControls.startupProblem.hidden,false);
+launchControls.maps.value='m';launchEnv.updateLaunchControls({state:{phase:'idle'}},false);
+assert.equal(launchControls.start.disabled,false);assert.equal(launchControls.load.disabled,false);assert.equal(launchControls.startupProblem.hidden,true);
+launchEnv.updateLaunchControls({state:{phase:'mapping'}},false);assert.equal(launchControls.load.disabled,true);
+console.log('UI: launch blockers are explained and empty map loads are disabled');

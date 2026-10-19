@@ -37,6 +37,14 @@ class CameraTests(unittest.TestCase):
         self.assertTrue(check('same','same',9,True,False,7))
 
 class RestartTests(unittest.TestCase):
+    def test_worker_failure_message_is_visible_and_bounded(self):
+        import server
+        with tempfile.TemporaryDirectory() as temp:
+            p=Path(temp)/'log';p.write_text('details\n操作未完成：传感器被其他建图程序占用\n')
+            self.assertEqual(server.failure_message(p),'传感器被其他建图程序占用')
+            p.write_text('操作未完成：'+'x'*2000+'\n')
+            self.assertEqual(len(server.failure_message(p)),1000)
+            p.unlink();self.assertIn('操作失败',server.failure_message(p))
     def test_stopped_mission_requires_explicit_matching_restart_token(self):
         import action
         with tempfile.TemporaryDirectory() as temp:

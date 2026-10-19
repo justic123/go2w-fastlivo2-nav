@@ -35,7 +35,21 @@ def run(args,timeout=120):
 def current():return read(MPPI/'current.json')
 def folder():return Path(current()['folder'])
 def desk():return compute_backend.current(ROOT)
-def fusion_control(action):run(['/usr/bin/python3',compute_backend.control(ROOT),action])
+def fusion_control(action):
+ try:run(['/usr/bin/python3',compute_backend.control(ROOT),action])
+ except RuntimeError:
+  if action=='start' and compute_backend.onboard(ROOT):
+   sys.path.insert(0,str(ROOT/'board'))
+   from startup_check import describe
+   dc=desk();runtime=read(Path(dc['folder'])/'runtime.json')
+   if runtime.get('error'):raise RuntimeError(describe(runtime['error'])) from None
+  raise
+def check_startup():
+ if compute_backend.onboard(ROOT):
+  sys.path.insert(0,str(ROOT/'board'))
+  from startup_check import problem
+  message=problem(ROOT)
+  if message:raise RuntimeError(message)
 def fusion_restart():
  if compute_backend.onboard(ROOT):fusion_control('start')
  else:run(['bash','重新采集.sh','restart']);run(['bash','本机建图测试.sh','start'])
@@ -129,7 +143,7 @@ def restore():
   if not (MPPI/'maps'/ident/name).is_file():raise RuntimeError('地图文件缺失：'+name)
  for target in d.get('points',{}).values():
   if target.get('map_id')!=ident or target.get('frame')!='map':raise RuntimeError('目标点不是当前保存地图的map坐标，禁止复用')
- assert_no_motion();archive_state();save(phase='recovering',preview=None)
+ assert_no_motion();check_startup();archive_state();save(phase='recovering',preview=None)
  print('恢复地图 '+ident+'：请全程保持静止；不会发送运动指令。',flush=True)
  try:
   run(['bash','MPPI导航.sh','stop']);fusion_control('stop')
@@ -205,7 +219,7 @@ def assisted_restore():
   subprocess.run(['docker','exec','go2w-nav2-mppi','pkill','-INT','-f','^python3 /work/initial_pose.py'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5)
 
 def start_mapping():
- assert_no_motion();archive_state();save(phase='starting',points={},preview=None,recovery_error=None,map_id=None,selected=None,session=None,route=None,route_preview=None)
+ assert_no_motion();check_startup();archive_state();save(phase='starting',points={},preview=None,recovery_error=None,map_id=None,selected=None,session=None,route=None,route_preview=None)
  try:_start_mapping_services()
  except (Exception,KeyboardInterrupt) as e:
   save(phase='start_failed',preview=None,route_preview=None,recovery_error=str(e) or '操作已取消')

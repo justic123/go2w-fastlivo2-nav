@@ -1,0 +1,9 @@
+{
+  "isolated_origin": "http://127.0.0.1:18089",
+  "confirmed_requests": 1,
+  "requests_after_second_dialog_escape": 1,
+  "robot_actions_in_browser_test": 0,
+  "actual_robot_page_blocker_visible": true,
+  "actual_robot_page_start_enabled": false,
+  "actual_robot_page_empty_map_load_enabled": false
+}

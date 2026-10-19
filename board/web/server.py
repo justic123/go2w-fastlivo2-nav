@@ -7,6 +7,8 @@ from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
 from common import ROOT,STATE,CACHE,read,atomic,fresh,pose,name
+sys.path.insert(0,str(ROOT/'board'))
+from startup_check import problem as startup_problem
 STATIC=PathStatic=ROOT/'board/web/static'
 ACTIONS={'anchor-save','anchor-use','anchor-delete','delete-map','restore-map','start','finish','load-map','restore','assist','record','map-point','preview','navigate','route-set','route-preview','route-execute','route-resume-preview','route-resume','point-settings'}
 MOTION={'navigate','route-execute','route-resume'}
@@ -43,6 +45,14 @@ def stop_action(reason='用户请求停车'):
             with lock:stopping=False
     threading.Thread(target=cancel,daemon=True).start()
 
+def failure_message(log):
+    try:
+        with log.open('rb') as tail:
+            tail.seek(max(0,log.stat().st_size-8192));lines=tail.read().decode(errors='replace').splitlines()
+    except OSError:return '操作失败，请查看日志'
+    messages=[line[len('操作未完成：'):] for line in lines if line.startswith('操作未完成：')]
+    return messages[-1][:1000] if messages else '操作失败，请查看日志'
+
 def begin(req,owner):
     global job,worker
     action=req.get('action')
@@ -68,6 +78,7 @@ def begin(req,owner):
             with lock:
                 if job and job['id']==ident:
                     job.update(phase='cancelled' if job['cancelled'] else 'done' if code==0 else 'failed',returncode=code,ended=time.time())
+                    if code:job['error']=failure_message(log)
                     atomic(STATE/'last-job.json',{k:v for k,v in job.items() if k!='owner'})
         threading.Thread(target=finish,daemon=True).start()
         return ident
@@ -119,7 +130,7 @@ def snapshot():
     if d.get('map_id'):
         try:anchors=localization_anchors.entries(catalog,d['map_id'])
         except (OSError,ValueError,KeyError) as e:anchor_error=str(e)
-    return dict(resume=continuation,map_geometry_warning=map_geometry_warning,anchors=anchors,anchor_error=anchor_error,external_operation=console_busy(),map_versions=versions,trash=map_store.trash_entries(catalog),generation=generation,now=time.time(),compute='Go2W 板载',speed=speed,point_fingerprints=fingerprints,state=d,maps=sorted(maps,reverse=True),fusion_ready=fusion_ok,nav_ready=nav_ok,localized=localized,ready=ready,
+    return dict(startup_problem=startup_problem(ROOT),resume=continuation,map_geometry_warning=map_geometry_warning,anchors=anchors,anchor_error=anchor_error,external_operation=console_busy(),map_versions=versions,trash=map_store.trash_entries(catalog),generation=generation,now=time.time(),compute='Go2W 板载',speed=speed,point_fingerprints=fingerprints,state=d,maps=sorted(maps,reverse=True),fusion_ready=fusion_ok,nav_ready=nav_ok,localized=localized,ready=ready,
                 motion_modes=dict(supported=supported,note='到点停稳后切换，并等待实机状态确认后继续。' if supported else '到点切换参数可保存；当前板端接口尚未验证，切换目标会在执行前拒绝'),fusion=fusion,input=inp,localization=loc,nav_runtime=nr,view=view,camera=camera,job=j,stopping=stopping,last_result=last_result,last_stop=read(STATE/'last-stop.json'),route_progress=read(nf/'route_progress.json'))
 
 def heartbeat_lost(current,clients,now):

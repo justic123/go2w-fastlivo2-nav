@@ -4,7 +4,7 @@ let state=null,connected=false,busy=false,route=[],routeDirty=false,routeKey='',
 const canvas=$('map2d'),ctx=canvas.getContext('2d');
 function toast(s){$('toast').textContent=s;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000)}
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',signal:AbortSignal.timeout(8000),headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});let d=await r.json();if(!r.ok){if(r.status===401){connected=false;if(pendingAction){pendingAction.resolve(false);pendingAction=null;busy=false;toast('连接会话失效，请重新登录并核对保存结果')}if(!$('login').open)$('login').showModal()}throw Error(d.error||'连接失败')}return d}
-function ask(title,text){$('confirmTitle').textContent=title;$('confirmText').textContent=text;$('confirm').showModal();return new Promise(resolve=>{$('confirm').addEventListener('close',()=>resolve($('confirm').returnValue==='yes'),{once:true})})}
+function ask(title,text){$('confirmTitle').textContent=title;$('confirmText').textContent=text;$('confirm').returnValue='no';$('confirm').showModal();return new Promise(resolve=>{$('confirm').addEventListener('close',()=>resolve($('confirm').returnValue==='yes'),{once:true})})}
 async function act(action,extra={}){
  if(!connected||Date.now()-lastStatus>3500){toast('连接或状态已过期，等待刷新后再操作');return false}
  if(busy||pendingAction){toast('请等待当前操作完成');return false}
@@ -164,7 +164,7 @@ function updateCamera(s){
 }
 function update(s){state=s;lastStatus=Date.now();
  $('mapWarning').hidden=!s.map_geometry_warning;$('mapWarning').textContent=s.map_geometry_warning||'';
- if(pendingAction&&s.job?.id===pendingAction.id&&s.job.phase!=='running'){const p=pendingAction;pendingAction=null;p.resolve(s.job.phase==='done');toast(s.job.phase==='done'?'操作已完成':'操作未完成，草稿保留，请查看日志')}
+ if(pendingAction&&s.job?.id===pendingAction.id&&s.job.phase!=='running'){const p=pendingAction;pendingAction=null;p.resolve(s.job.phase==='done');toast(s.job.phase==='done'?'操作已完成':'操作未完成：'+(s.job.error||s.state.recovery_error||'草稿保留，请查看日志'))}
  busy=!!pendingAction||s.job?.phase==='running'||s.stopping||s.external_operation;
  const mapChanged=uiMap!==s.state.map_id;if(mapChanged){uiMap=s.state.map_id;routeDirty=false;routeKey='';route=[];modeDirty=false;modeKey='';$('cancelPick').click();$('pointName').value='';$('anchorName').value='';grid=null;gridTag='';fitKey=''}options('maps',s.maps,s.state.map_id,mapChanged);trashOptions(s);const names=Object.keys(s.state.points||{});options('targets',names,s.state.selected);options('routeTarget',names);$('phase').textContent=(!busy&&['starting','recovering','validating_map'].includes(s.state.phase))?(s.fusion_ready?'服务已启动，待选择地图':'初始化已中断'):phaseNames[s.state.phase]||s.state.phase||'待开始';
  const badges=$('badges');badges.replaceChildren();for(const [label,ok] of [['板载融合',s.fusion_ready],['导航输入',s.nav_ready],['地图定位',s.localized]]){const e=document.createElement('span');e.className=ok?'good':'warn';e.textContent=(ok?'● ':'○ ')+label+(ok?'正常':'未就绪');badges.append(e)}
@@ -173,7 +173,8 @@ function update(s){state=s;lastStatus=Date.now();
  if(s.state.phase==='recovery_failed')text='旧地图重定位失败，已有地图和目标保留。可放回固定定位点后恢复，或在二维地图标记实际位置与朝向；匹配通过后才能记录当前位置和导航。';
  if(s.job?.phase==='running')text='正在执行：'+actionLabel(s.job.action)+'。'+(['navigate','route-execute','route-resume'].includes(s.job.action)?'实机运动中，请保持监控。':'请查看操作日志，初始化与定位期间保持静止。');
  if(s.external_operation&&s.job?.phase!=='running')text='控制台正在执行操作，请等待完成。当前阶段：'+(phaseNames[s.state.phase]||s.state.phase);
- if(!busy&&recentJobFailure(s)&&s.state.phase!=='recovery_failed')text='上次操作未完成。'+(s.last_result?.reason||(['route-execute','route-resume'].includes(s.job?.action)?s.route_progress?.error:'')||s.state.recovery_error||'请查看右侧日志中的具体原因。');
+ if(!busy&&recentJobFailure(s)&&s.state.phase!=='recovery_failed')text='上次操作未完成。'+(s.job?.error||s.last_result?.reason||(['route-execute','route-resume'].includes(s.job?.action)?s.route_progress?.error:'')||s.state.recovery_error||'请查看右侧日志中的具体原因。');
+ if(!busy&&s.startup_problem&&!s.fusion_ready)text=s.startup_problem;
  if(s.nav_runtime?.phase==='degraded')text='导航已暂停，后台仍在接收传感器并检查定位。请先停稳，等待重新验证；若持续不通过，再使用固定位置或地图标记重定位。中断的路线不会自动继续。';
  $('notice').textContent=text;$('notice').className=recentJobFailure(s)||(!busy&&['start_failed','recovery_failed'].includes(s.state.phase))?'error':'';
  const metrics=[['计算位置','Go2W 板载'],['前进速度上限',s.speed?.active?s.speed.active.vx_max+' m/s（运行中）':s.speed?.selected?s.speed.selected.vx_max+' m/s（待启动）':'—'],['地图',s.state.map_id||'未选择'],['融合延迟',s.fusion_ready?age(s.fusion.lag_last_s):'未运行 / 数据过期'],['位姿数据年龄',s.nav_ready?age(s.input.pose_age_s):'输入未就绪'],['点云数据年龄',s.nav_ready?age(s.input.cloud_age_s):'输入未就绪'],['地图匹配率',s.localization?.stats?.fitness!=null?(s.localization.stats.fitness*100).toFixed(1)+'%':'—']];
@@ -183,12 +184,19 @@ function update(s){state=s;lastStatus=Date.now();
  if(s.job?.phase!=='running'&&s.now-(s.job?.ended||s.job?.started||0)>=60)$('jobStatus').textContent+='（历史记录）';
  $('logKind').textContent=s.job?.phase==='running'?'实时':s.job?.action?'最近一次操作':'等待';$('log').textContent=s.job?.log||'等待操作…';$('log').scrollTop=$('log').scrollHeight;
  for(const id of ['load','start','restore','assist','record','mapPoint','preview','finish'])$(id).disabled=busy;
- $('finish').disabled=busy||s.state.phase!=='mapping';$('restore').disabled=busy||!s.state.map_id||s.state.phase==='mapping';$('restore').disabled||=s.ready;$('assist').disabled=$('restore').disabled;$('load').disabled=busy||s.state.phase==='mapping'||(s.ready&&$('maps').value===s.state.map_id);
+ $('finish').disabled=busy||s.state.phase!=='mapping';$('restore').disabled=busy||!s.state.map_id||s.state.phase==='mapping';$('restore').disabled||=s.ready;$('assist').disabled=$('restore').disabled;
+ updateLaunchControls(s,busy);
  updateRecord(s,busy);updateAnchors(s);$('preview').disabled=busy||modeDirty||!s.ready||!names.length;$('navigate').disabled=busy||modeDirty||modeBlocked($('targets').value)||!validPreview()||!!navigationAgeReason(s);$('navigate').title=navigationAgeReason(s);$('mapPoint').disabled=busy||!s.state.map_id||s.state.phase==='mapping';
  syncMode();const rk=JSON.stringify(s.state.route?.names||[]);if(!routeDirty&&rk!==routeKey){route=s.state.route?.names?.slice()||[];routeKey=rk}drawRoute();
  const rp=s.route_progress;$('routeProgress').textContent=rp?.phase?'任务：'+(({awaiting_manual:'已结束，等待人工接管',stopped:'已停止，进度保留',countdown:'启动倒计时',navigating:'前往目标',dwelling:'到点停靠',completed:'全部完成'}[rp.phase]||rp.phase))+' · 已完成 '+rp.completed+'/'+(rp.names?.length||0)+(rp.error?' · '+rp.error:''):routeDirty?(route.length===1?'只有1个途经点，请再添加一个；单点导航请使用左侧按钮。':'路线已修改，请先保存再预演'):'';
  updateCamera(s);
  draw();loadAssets();loadCamera();
+}
+function updateLaunchControls(s,isBusy){
+ const blocked=s.startup_problem||'';
+ $('start').disabled=isBusy||!!blocked;$('start').title=blocked;
+ $('startupProblem').hidden=!blocked;$('startupProblem').textContent=blocked;
+ $('load').disabled=!!(isBusy||!$('maps').value||s.state.phase==='mapping'||(s.ready&&$('maps').value===s.state.map_id));
 }
 function actionLabel(a){return {'anchor-save':'保存固定定位点','anchor-use':'固定位置重定位','anchor-delete':'删除固定定位点',start:'开始扫图',finish:'保存地图','load-map':'加载地图',restore:'自动重定位',assist:'辅助重定位',record:'记录当前位置','point-settings':'保存到点模式','map-point':'保存地图目标',preview:'预演路线',navigate:'导航','route-set':'保存多点路线','route-preview':'预演整条路线','route-execute':'执行整条路线','route-resume-preview':'预演剩余路线','route-resume':'继续未完成任务','delete-map':'删除地图','restore-map':'恢复回收站地图'}[a]||a}
 async function poll(){if(pollBusy)return;pollBusy=true;try{const s=await api('status');connected=true;update(s)}catch(e){if(connected)toast(e.message);connected=false;markDisconnected()}finally{pollBusy=false}}
@@ -202,7 +210,7 @@ function markDisconnected(){
 }
 setInterval(()=>{if(!document.hidden||busy)poll();if(Date.now()-lastStatus>3500&&lastStatus)markDisconnected()},1000);
 
-$('maps').onchange=()=>{if(state)$('load').disabled=busy||state.state.phase==='mapping'||(state.ready&&$('maps').value===state.state.map_id);mapButtons(state)};
+$('maps').onchange=()=>{if(state)updateLaunchControls(state,busy);mapButtons(state)};
 $('targets').onchange=()=>{syncMode(true);$('navigate').disabled=busy||modeBlocked($('targets').value)||!validPreview()};
 async function blobImage(file,stamp){const r=await fetch('/data/'+file+'?v='+stamp,{signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('无图像');return createImageBitmap(await r.blob())}
 async function loadCamera(){const s=state;if(cameraBusy||s?.camera.enabled===false||!s?.camera.updated||s.now-s.camera.updated>=3||camTag===String(s.camera.updated))return;cameraBusy=true;try{const r=await fetch('/data/camera.jpg?v='+s.camera.updated,{signal:AbortSignal.timeout(4000)});if(!r.ok)throw Error('camera');const u=URL.createObjectURL(await r.blob());$('camera').src=u;$('camera').hidden=false;$('cameraEmpty').hidden=true;URL.revokeObjectURL(camURL);camURL=u;camTag=String(s.camera.updated)}catch(e){$('cameraEmpty').textContent='相机画面加载失败，正在重试';$('cameraEmpty').hidden=false}finally{cameraBusy=false}}

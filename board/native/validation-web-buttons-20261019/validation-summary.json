@@ -1,0 +1,33 @@
+{
+  "at": 1792409573.7610784,
+  "owners": [
+    {
+      "pid": 3219,
+      "parent": 2705,
+      "birth": "21390",
+      "name": "xt16_driver"
+    },
+    {
+      "pid": 3230,
+      "parent": 2837,
+      "birth": "22134",
+      "name": "unitree_slam"
+    }
+  ],
+  "problem": "传感器被其他建图程序占用：xt16_driver（PID 3219）、unitree_slam（PID 3230）。请先正常结束这些程序，再重新开始扫图；网页不会自动停止它们。",
+  "web_active": "active",
+  "fusion_current": {
+    "run": "board-20261019-192336-5485",
+    "folder": "/home/unitree/fast_livo2_port/onboard/deploy-20261015/board/runs/board-20261019-192336-5485",
+    "pid": 5487,
+    "birth": "189677"
+  },
+  "project_motion_active": false,
+  "maps": [],
+  "trash": [
+    "1792408987971400032-ca275999",
+    "1792408985426626976-46668d36"
+  ],
+  "state_sha256": "f309e53b29d4d1511c5d4c27dbe888b8acbeeac49bb23c43c710eb78dad2d33d",
+  "no_sensor_or_motion_start": true
+}
