@@ -9,8 +9,9 @@ def encode_grid(data,width,height):
  a=np.asarray(data,dtype=np.int16).reshape(height,width)
  if not np.any(a==0) or not np.any(a>=0):raise ValueError('No observed free cells')
  if np.any((a < -1)|(a>100)):raise ValueError('Invalid occupancy values')
- # Inflation is recomputed after reload. Preserve lethal + inscribed as occupied.
- image=np.full(a.shape,205,dtype=np.uint8);image[(a>=0)&(a<99)]=254;image[a>=99]=0
+ # Only actual lethal cells are obstacles. Value 99 is the inscribed inflation
+ # band, not measured geometry; saving it as occupied would inflate twice.
+ image=np.full(a.shape,205,dtype=np.uint8);image[(a>=0)&(a<100)]=254;image[a==100]=0
  return image[::-1].tobytes()
 
 def main():
@@ -36,8 +37,9 @@ def main():
   q=m.info.origin.orientation
   if abs(q.x)+abs(q.y)+abs(q.z)>1e-6:raise RuntimeError('Rotated grid unsupported')
   data=encode_grid(m.data,m.info.width,m.info.height);out=root/('frozen-map-'+str(time.time_ns()));out.mkdir(exist_ok=False)
+  np.save(out/'source_costmap.npy',np.asarray(m.data,dtype=np.int16).reshape(m.info.height,m.info.width))
   (out/'map.pgm').write_bytes(('P5\n%d %d\n255\n'%(m.info.width,m.info.height)).encode()+data)
   (out/'map.yaml').write_text(yaml.safe_dump(dict(image='map.pgm',resolution=m.info.resolution,origin=[m.info.origin.position.x,m.info.origin.position.y,0.],negate=0,occupied_thresh=.65,free_thresh=.196)))
-  (out/'metadata.json').write_text(json.dumps(dict(session=session,saved_at=time.time(),frame='camera_init',note='Observed navigation costmap snapshot; unknown preserved, inflation recomputed'),indent=2));print(str(out))
+  (out/'metadata.json').write_text(json.dumps(dict(session=session,saved_at=time.time(),frame='camera_init',occupancy_encoding='lethal_only_v2',note='Only lethal cost 100 stored as occupied; inflation (including 99) recomputed; unknown preserved'),indent=2));print(str(out))
  finally:n.destroy_node();rclpy.shutdown()
 if __name__=='__main__':main()

@@ -3,6 +3,12 @@
 import argparse,fcntl,hashlib,json,math,os,select,shutil,signal,subprocess,sys,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];MPPI=ROOT/'navigation/mppi';STATE=ROOT/'demo/state.json'
+sys.path.insert(0,str(MPPI))
+from motion_modes import arrival_motion,action_label,point_fingerprint,manual_handoff
+import point_settings
+from map_publish import publish as publish_map
+sys.path.insert(0,str(ROOT/'lifecycle'))
+import compute_backend
 
 def read(p):return json.loads(Path(p).read_text())
 def write(p,d):
@@ -28,18 +34,23 @@ def run(args,timeout=120):
  if code:raise RuntimeError('命令失败，已停止本步骤；请查看以上错误')
 def current():return read(MPPI/'current.json')
 def folder():return Path(current()['folder'])
-def desk():return read(ROOT/'desktop/current.json')
+def desk():return compute_backend.current(ROOT)
+def fusion_control(action):run(['/usr/bin/python3',compute_backend.control(ROOT),action])
+def fusion_restart():
+ if compute_backend.onboard(ROOT):fusion_control('start')
+ else:run(['bash','重新采集.sh','restart']);run(['bash','本机建图测试.sh','start'])
 def check_session(d):
  if desk()['run']!=d.get('session') or current()['session']!=d.get('session'):
   raise RuntimeError('融合会话已变化；请选择9或10恢复旧地图定位，原目标暂不可用')
 def service_problem():
- if state().get('phase') in ('recovering','recovery_failed','map_selected','validating_map','starting'):return '地图定位尚未验证；请完成恢复流程'
+ if state().get('phase') in ('recovering','recovery_failed','map_selected','validating_map','starting','start_failed'):return '地图定位尚未验证；请完成恢复流程'
  try:
   dc=desk();runtime=read(Path(dc['folder'])/'runtime.json')
   if runtime.get('phase')!='running':return '融合定位已停止：'+str(runtime.get('error') or runtime.get('phase'))
   h=read(Path(dc['folder'])/'health.json')
   if not h.get('ready') or not 0<=time.time()-h['updated']<2:return '融合定位数据过期/未就绪'
   r=folder();runtime=read(r/'runtime.json')
+  if runtime.get('phase')=='degraded':return '导航已暂停：'+str(runtime.get('error'))+'；等待数据与定位重新验证，不会自动继续运动'
   if runtime.get('phase')!='running':return '导航服务已停止：'+str(runtime.get('error') or runtime.get('phase'))
   d=state()
   if d.get('phase')=='navigation':
@@ -52,18 +63,29 @@ def health(selected=True):
  r=folder()
  for k in ['input','lifecycle']+(['localization'] if selected else []):
   d=read(r/(k+'.json'))
-  if not d.get('ready') or not 0<=time.time()-d['updated']<1:raise RuntimeError(k+'未就绪/过期')
+  if not d.get('ready') or not 0<=time.time()-d['updated']<1:
+   detail=('；位姿年龄=%s秒，点云年龄=%s秒，输入故障=%s'%(d.get('pose_age_s'),d.get('cloud_age_s'),d.get('fault'))) if k=='input' else ''
+   raise RuntimeError(k+'未就绪/过期'+detail)
  d=read(r/'runtime.json')
  if d['phase']!='running' or not 0<=time.time()-d['updated']<1:raise RuntimeError('导航运行状态过期')
 def wait_ready(selected):
- end=time.monotonic()+30
+ # Input initialization, optional localization, then Nav2 activation are serial.
+ # Keep health freshness unchanged; allow the cold-start stages to finish.
+ timeout=90 if selected else 60
+ end=time.monotonic()+timeout;last_error='等待状态文件'
  while time.monotonic()<end:
   try:health(selected);return
-  except (OSError,ValueError,RuntimeError):time.sleep(.5)
- raise RuntimeError('服务30秒内未就绪，请检查状态')
+  except (OSError,ValueError,KeyError,RuntimeError) as e:last_error=str(e)
+  try:runtime=read(folder()/'runtime.json')
+  except (OSError,ValueError,KeyError):runtime={}
+  if runtime.get('phase') in ('failed','stopped','stopping'):
+   raise RuntimeError('导航服务启动已终止：'+str(runtime.get('error') or runtime['phase']))
+  time.sleep(.5)
+ raise RuntimeError('服务%d秒内未就绪：%s；请检查状态'%(timeout,last_error))
 def stop_motion():
  try:
   if (folder()/'route_active.json').exists():(folder()/'route_cancel.request').touch()
+  (folder()/'arrival_cancel.request').touch()
  except (OSError,ValueError):pass
  # No SDK initialization: signal only our existing protected action.
  subprocess.run(['docker','exec','go2w-nav2-mppi','pkill','-INT','-f','^python3 /work/execute.py'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5)
@@ -89,7 +111,8 @@ def archive_state():
 def validate_registration(candidate,ident,session):
  import numpy as np
  if candidate.get('map_id')!=ident or candidate.get('source_session')!=session:raise RuntimeError('重定位结果地图/会话不一致')
- if not candidate.get('accepted') or candidate.get('consensus',0)<3:
+ required=4 if candidate.get('method')=='user_hint_multistart_icp' else 3
+ if not candidate.get('accepted') or candidate.get('consensus',0)<required:
   detail=''
   if candidate.get('method')=='user_hint_multistart_icp':
    detail='；提示位置修正 %.3fm（须<0.75m），朝向修正 %.3frad（须<0.35rad），一致候选 %s（须≥4）'%(candidate.get('hint_correction_m',float('nan')),candidate.get('hint_correction_rad',float('nan')),candidate.get('consensus',0))
@@ -109,9 +132,9 @@ def restore():
  assert_no_motion();archive_state();save(phase='recovering',preview=None)
  print('恢复地图 '+ident+'：请全程保持静止；不会发送运动指令。',flush=True)
  try:
-  run(['bash','MPPI导航.sh','stop']);run(['/usr/bin/python3','desktop/control.py','stop'])
+  run(['bash','MPPI导航.sh','stop']);fusion_control('stop')
   if (MPPI/'selection.json').exists():(MPPI/'selection.json').unlink()
-  run(['bash','重新采集.sh','restart']);run(['bash','本机建图测试.sh','start'])
+  fusion_restart()
   session=desk()['run']
   run(['/usr/bin/python3',MPPI/'make_config.py','--output',MPPI/'demo_nav.yaml'])
   run(['env','GO2W_MPPI_CONFIG=/work/demo_nav.yaml','bash','MPPI导航.sh','start']);wait_ready(False)
@@ -130,12 +153,12 @@ def activate_registration(d,candidate,session):
  points=d.get('points',{})
  for target in points.values():
   target.setdefault('original_source_session',target['source_session']);target['source_session']=session
- save(phase='navigation',session=session,points=points,preview=None,route_preview=None,recovery_error=None)
+ save(phase='navigation',session=session,points=points,preview=None,route_preview=None,route_resume_preview=None,recovery_error=None)
  print('旧地图定位已恢复，原目标点已保留。先在RViz核对位置和机头方向，再选择4重新预演；不会自动导航。')
 
 def prepare_assisted_inputs():
  # Reuse healthy FAST-LIVO2; only rebuild its session if fusion itself is down.
- assert_no_motion();archive_state();save(phase='recovering',preview=None,recovery_error=None)
+ assert_no_motion();archive_state();save(phase='recovering',preview=None,route_preview=None,recovery_error=None)
  try:
   dc=desk();r=Path(dc['folder']);h=read(r/'health.json')
   fusion_ready=read(r/'runtime.json')['phase']=='running' and h.get('ready') and 0<=time.time()-h['updated']<2
@@ -143,7 +166,7 @@ def prepare_assisted_inputs():
  run(['bash','MPPI导航.sh','stop'])
  if (MPPI/'selection.json').exists():(MPPI/'selection.json').unlink()
  if not fusion_ready:
-  run(['/usr/bin/python3','desktop/control.py','stop']);run(['bash','重新采集.sh','restart']);run(['bash','本机建图测试.sh','start'])
+  fusion_control('stop');fusion_restart()
  run(['/usr/bin/python3',MPPI/'make_config.py','--output',MPPI/'demo_nav.yaml'])
  run(['env','GO2W_MPPI_CONFIG=/work/demo_nav.yaml','bash','MPPI导航.sh','start']);wait_ready(False)
 
@@ -183,11 +206,17 @@ def assisted_restore():
 
 def start_mapping():
  assert_no_motion();archive_state();save(phase='starting',points={},preview=None,recovery_error=None,map_id=None,selected=None,session=None,route=None,route_preview=None)
- run(['bash','MPPI导航.sh','stop']);run(['/usr/bin/python3','desktop/control.py','stop'])
+ try:_start_mapping_services()
+ except (Exception,KeyboardInterrupt) as e:
+  save(phase='start_failed',preview=None,route_preview=None,recovery_error=str(e) or '操作已取消')
+  raise
+
+def _start_mapping_services():
+ run(['bash','MPPI导航.sh','stop']);fusion_control('stop')
  if (MPPI/'selection.json').exists():
   dest=MPPI/'backups'/('console-'+str(time.time_ns()));dest.mkdir(parents=True);shutil.move(str(MPPI/'selection.json'),dest/'selection.json')
  # Reinitialize capture clock; never reuse a known old clock anchor for a new demo.
- run(['bash','重新采集.sh','restart']);run(['bash','本机建图测试.sh','start'])
+ fusion_restart()
  run(['/usr/bin/python3',MPPI/'make_config.py','--output',MPPI/'demo_nav.yaml']);run(['env','GO2W_MPPI_CONFIG=/work/demo_nav.yaml','bash','MPPI导航.sh','start']);wait_ready(False)
  session=desk()['run'];out=folder()/'demo-map'
  run(['docker','exec','-d','go2w-nav2-mppi','bash','-c','source /opt/ros/humble/setup.bash; exec python3 /work/demo_collect.py'])
@@ -205,6 +234,14 @@ def start_mapping():
 def finish_mapping():
  d=state()
  if d['phase']!='mapping':raise RuntimeError('当前不是扫图阶段')
+ try:_finish_mapping(d)
+ except (Exception,KeyboardInterrupt) as e:
+  # A saved map remains recoverable even if its first localization attempt fails.
+  if state().get('phase')=='validating_map':
+   save(phase='recovery_failed',preview=None,route_preview=None,recovery_error=str(e) or '操作已取消')
+  raise
+
+def _finish_mapping(d):
  check_session(d);health(False)
  run(['docker','exec','go2w-nav2-mppi','bash','-c','source /opt/ros/humble/setup.bash; python3 /work/demo_freeze.py'])
  old=folder();collect=old/'demo-map';(collect/'finish.request').touch()
@@ -215,10 +252,10 @@ def finish_mapping():
   if s['phase']=='saved':break
   time.sleep(.3)
  else:raise RuntimeError('三维地图保存超时')
- ident='demo-'+time.strftime('%Y%m%d-%H%M%S');dest=MPPI/'maps'/ident
+ ident='demo-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(time.time_ns()%1000000000);dest=MPPI/'maps'/ident
  source=max(old.glob('frozen-map-*'),key=lambda p:p.stat().st_mtime)
  if read(source/'metadata.json')['session']!=d['session']:raise RuntimeError('地图会话不一致')
- shutil.copytree(source,dest);shutil.copy2(collect/'points.npy',dest/'points.npy')
+ publish_map(source,collect/'points.npy',dest,d['session'],ROOT/'board/web-state/cache')
  save(phase='validating_map',map_id=ident)
  run(['bash','MPPI导航.sh','stop'])
  write(MPPI/'selection.json',dict(map_id=ident,source_session=d['session'],created=time.time(),transform=[[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]],note='Map frozen in this live camera_init frame; validate before navigation'))
@@ -233,6 +270,9 @@ def record(name):
  check_session(d);health();run(['bash','MPPI导航.sh','record',name])
  target=read(folder()/'accuracy_target.json')
  if target['source_session']!=d['session'] or target['map_id']!=d['map_id']:raise RuntimeError('目标会话不一致')
+ target.setdefault('name',name);old=d['points'].get(name,{})
+ target['arrival_motion']=arrival_motion(old)
+ target['manual_handoff']=manual_handoff(old)
  d['points'][name]=target;d['selected']=name;d['preview']=None;d['route_preview']=None;write(STATE,d);write(MPPI/'maps'/d['map_id']/'console_points.json',dict(points=d['points'],selected=name,route=d.get('route')));print('已保存当前位置和朝向：'+name)
 def choose(name):
  d=state()
@@ -246,14 +286,13 @@ def preview(name):
  choose(name);save(preview=None);run(['bash','MPPI导航.sh','return-preview'],45)
  r=read(max(folder().glob('protected-preview-*.json'),key=lambda p:p.stat().st_mtime))
  if not r.get('preview_passed'):raise RuntimeError('预演未通过')
- save(preview=dict(name=name,at=time.time(),pose=r['last_pose'],timeout_s=r.get('recommended_timeout_s',90)))
+ save(preview=dict(name=name,at=time.time(),pose=r['last_pose'],timeout_s=r.get('recommended_timeout_s',90),target_fingerprint=point_fingerprint(state()['points'][name])))
+ print('到点动作：'+action_label(state()['points'][name])+'（预演不执行切换）。')
  print('预演通过。请在RViz确认障碍被识别且路径从外侧绕行，再选择开始导航。')
 def current_map_pose():
- import numpy as np
- r=folder();inp=read(r/'input.json');loc=read(r/'localization.json');v=inp['pose']['pose'];T=np.array(loc['transform']);xyz=T[:3,:3]@v[:3]+T[:3,3]
- x,y,z,w=v[3:];norm=x*x+y*y+z*z+w*w
- if not math.isfinite(norm) or abs(norm-1)>.02:raise RuntimeError('姿态四元数无效')
- forward=T[:3,:3]@np.array([1-2*(y*y+z*z)/norm,2*(x*y+w*z)/norm,2*(x*z-w*y)/norm]);return [float(xyz[0]),float(xyz[1]),math.atan2(forward[1],forward[0])]
+ from pose_transform import map_pose
+ r=folder();inp=read(r/'input.json');loc=read(r/'localization.json');v=inp['pose']['pose']
+ return map_pose(v,loc['transform'])
 
 def navigate(name):
  d=state()
@@ -262,12 +301,13 @@ def navigate(name):
  if not p or p['name']!=name or not 0<=time.time()-p['at']<60:raise RuntimeError('请先对该点预演，预演仅60秒内有效')
  xyz=current_map_pose();turn=math.atan2(math.sin(xyz[2]-p['pose'][2]),math.cos(xyz[2]-p['pose'][2]))
  if math.hypot(xyz[0]-p['pose'][0],xyz[1]-p['pose'][1])>.05 or abs(turn)>.1:raise RuntimeError('预演后位置/朝向变化，请重新预演')
+ if p.get('target_fingerprint')!=point_fingerprint(d['points'][name]):raise RuntimeError('目标位置或到点参数变化，请重新预演')
  choose(name);save(preview=None)
  timeout_s=int(p.get('timeout_s',90));run(['bash','MPPI导航.sh','return-execute','--timeout',str(timeout_s)],timeout_s+45)
  print('任务结束，请确认实机停稳并测量。软件结果不能代替实测。')
 def status():
  problem=service_problem();print('【禁止导航】'+problem if problem else '服务及定位就绪（运动仍需有效预演）')
- d=state();print(json.dumps(d,ensure_ascii=False,indent=2));run(['/usr/bin/python3','desktop/control.py','status']);run(['bash','MPPI导航.sh','status'])
+ d=state();print(json.dumps(d,ensure_ascii=False,indent=2));fusion_control('status');run(['bash','MPPI导航.sh','status'])
 def load_map(ident=None):
  maps=sorted(p.name for p in (MPPI/'maps').iterdir() if p.is_dir() and all((p/n).is_file() for n in ('map.yaml','map.pgm','points.npy')))
  print('已保存地图：\n'+'\n'.join(maps))
@@ -290,7 +330,7 @@ def record_map_point(name=None):
  if not ident or d['phase'] in ('mapping','starting','validating_map'):raise RuntimeError('先保存或选择地图')
  name=name or input('新目标点名称：').strip()
  if not name or len(name)>64:raise RuntimeError('点名称需为1–64字符')
- view('navigation');began=time.time();deadline=time.monotonic()+180;p=MPPI/'maps'/ident/'clicked_goal.json'
+ view('navigation');began=time.time();deadline=time.monotonic()+180;p=ROOT/'board/display/clicked_goal.json' if compute_backend.onboard(ROOT) else MPPI/'maps'/ident/'clicked_goal.json'
  print('在导航RViz点击 2D Goal Pose，在目标位置按下并沿期望停靠朝向拖动。只保存目标，不会运动。',flush=True)
  while time.monotonic()<deadline:
   try:
@@ -300,6 +340,8 @@ def record_map_point(name=None):
   time.sleep(.2)
  else:raise RuntimeError('未收到目标点击，请重试17')
  target=dict(name=name,frame='map',map_id=ident,source_session=d.get('session'),pose=clicked['pose'],created=time.time(),source='rviz_map_click',ground_truth=None)
+ target['arrival_motion']=arrival_motion(d['points'].get(name,{}))
+ target['manual_handoff']=manual_handoff(d['points'].get(name,{}))
  d['points'][name]=target;d.update(selected=name,preview=None,route_preview=None);write(STATE,d)
  write(MPPI/'maps'/ident/'console_points.json',dict(points=d['points'],selected=name,route=d.get('route')))
  print('已保存地图目标：'+name+'。导航前必须完成定位和路径预演。')
@@ -312,7 +354,7 @@ def saved_map_display():
  d=state();ident=d.get('map_id')
  if not ident:return
  pid=d.get('map_view_pid')
- digest=hashlib.sha256((MPPI/'initial_pose.py').read_bytes()).hexdigest()
+ digest=hashlib.sha256(b''.join((MPPI/n).read_bytes() for n in ('initial_pose.py','mission_view.py','route_model.py','motion_modes.py'))).hexdigest()
  if pid and owned_process(pid,'initial_pose.py'):
   if d.get('map_view_id')==ident and d.get('map_view_hash')==digest:return
   os.kill(pid,signal.SIGTERM)
@@ -322,6 +364,12 @@ def saved_map_display():
  save(map_view_pid=p.pid,map_view_id=ident,map_view_hash=digest)
 
 def view(mode):
+ if compute_backend.onboard(ROOT):
+  if mode!='mapping':
+   args=['/usr/bin/python3',ROOT/'board/saved_view.py','start']
+   if state().get('map_id'):args+=['--map-id',state()['map_id']]
+   run(args)
+  print('板载服务就绪；在电脑运行 板载可视化.sh '+('mapping' if mode=='mapping' else 'cloud' if mode=='cloud' else 'navigation')+' 查看。');return
  if mode=='mapping':run(['bash','desktop/open_view.sh']);return
  saved_map_display()
  config=MPPI/('view_mapping.rviz' if state().get('phase')=='mapping' else 'view_cloud.rviz' if mode=='cloud' else 'view.rviz')
@@ -339,7 +387,10 @@ def view(mode):
  print('二维导航窗口：灰度膨胀图＋点云＋路径＋机头箭头；局部膨胀和车身轮廓可在左侧勾选。' if mode!='cloud' else '三维点云窗口：可切回菜单7查看二维膨胀图。')
 
 def main():
- parser=argparse.ArgumentParser();parser.add_argument('action',nargs='?',default='menu',choices=['menu','status','start','finish','restore','assist','record','preview','navigate','stop','rviz','cloud','mapping-view','load-map','route-set','route-preview','route-execute','map-point']);parser.add_argument('name',nargs='?');args=parser.parse_args()
+ parser=argparse.ArgumentParser();parser.add_argument('action',nargs='?',default='menu',choices=['menu','status','start','finish','restore','assist','record','preview','navigate','stop','rviz','cloud','mapping-view','load-map','route-set','route-preview','route-execute','route-resume-preview','route-resume','map-point','point-settings']);parser.add_argument('name',nargs='?');parser.add_argument('--arrival-motion',choices=['keep','obstacle','normal']);parser.add_argument('--handoff',choices=['stop','continue']);args=parser.parse_args()
+ if args.handoff is not None and args.action not in ('record','map-point','point-settings'):parser.error('--handoff只用于record、map-point或point-settings')
+ handoff=None if args.handoff is None else args.handoff=='stop'
+ if args.arrival_motion is not None and args.action not in ('record','map-point','point-settings'):parser.error('--arrival-motion只用于record、map-point或point-settings')
  if args.action=='stop':stop_motion();print('已请求取消导航；请确认实机停稳');return
  lock=(ROOT/'demo/console.lock').open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
  def dispatch(action,name=None):
@@ -351,7 +402,9 @@ def main():
   elif action=='assist':
    if input('保持静止，输入“已停稳”进入RViz辅助重定位：').strip()!='已停稳':raise RuntimeError('未确认停稳')
    assisted_restore()
-  elif action=='record':record(name or input('目标点名称：').strip())
+  elif action=='record':
+   n=name or input('目标点名称：').strip();record(n)
+   if args.action=='menu' or args.arrival_motion is not None or handoff is not None:point_settings.edit(sys.modules[__name__],n,args.arrival_motion,handoff)
   elif action in ('preview','navigate'):
    print('已保存点：'+'、'.join(state().get('points',{})));n=name or input('选择点名称：').strip()
    (preview if action=='preview' else navigate)(n)
@@ -360,12 +413,17 @@ def main():
   elif action=='cloud':view('cloud')
   elif action=='mapping-view':view('mapping')
   elif action=='load-map':load_map(name)
-  elif action=='map-point':record_map_point(name)
+  elif action=='map-point':
+   record_map_point(name)
+   if args.action=='menu' or args.arrival_motion is not None or handoff is not None:point_settings.edit(sys.modules[__name__],state()['selected'],args.arrival_motion,handoff)
+  elif action=='point-settings':point_settings.edit(sys.modules[__name__],name,args.arrival_motion,handoff)
   elif action.startswith('route-'):
    import mission
    c=sys.modules[__name__]
    if action=='route-set':mission.set_route(c,name)
    elif action=='route-preview':mission.preview(c)
+   elif action=='route-resume-preview':mission.preview(c,resume=True)
+   elif action=='route-resume':mission.execute(c,resume=True)
    else:mission.execute(c)
   else:status()
  if args.action!='menu':dispatch(args.action,args.name);return
@@ -373,6 +431,7 @@ def main():
   d=state();label={'idle':'未开始','starting':'正在初始化','mapping':'扫图中','validating_map':'存图校验中','navigation':'地图已保存（以实时状态为准）','map_selected':'已选旧地图，待重定位','recovering':'正在恢复旧地图定位','recovery_failed':'重定位未完成'}.get(d['phase'],d['phase'])
   print('\n=== Go2W 演示控制台 ===  '+label)
   print('地图：'+str(d.get('map_id') or '未保存')+' | 目标：'+'、'.join(d.get('points',{})))
+  if d.get('points'):print('到点参数：'+'；'.join(n+'='+point_settings.summary(t) for n,t in d['points'].items()))
   if d.get('route'):print('路线：'+' → '.join(d['route']['names']))
   if d.get('recovery_error') and d['phase']=='recovery_failed':print('恢复失败：'+d['recovery_error']+'；可选10辅助定位')
   if d['phase']!='idle':
@@ -380,7 +439,7 @@ def main():
    print('【禁止导航】'+problem if problem else '实时定位/服务正常')
   pv=d.get('preview');remaining=max(0,60-int(time.time()-pv['at'])) if pv else 0
   print(('预演有效：'+pv['name']+'，剩余'+str(remaining)+'秒') if remaining else '无有效预演；RViz中保留的路径不代表已允许运动')
-  print('1 开始新扫图（先静止）\n2 结束扫图并保存（先停稳）\n3 保存当前位置为目标点\n4 选择点并预览路径（不运动）\n5 开始导航（会运动，Ctrl+C取消）\n6 停止导航\n7 打开二维导航RViz（膨胀图）\n8 查看状态及已保存点\n9 恢复当前保存地图的定位（先停稳，保留目标点）\n10 在RViz指定大致位置重定位（可直接使用，先静止）\n11 打开彩色建图窗口\n12 打开导航三维点云窗口\n13 选择已保存地图（保留对应目标）\n14 编辑逐点停靠路线\n15 预演整条路线（不运动）\n16 执行整条路线（逐点停稳）\n17 在RViz中添加地图目标（不运动）\n0 退出菜单（定位继续运行）')
+  print('1 开始新扫图（先静止）\n2 结束扫图并保存（先停稳）\n3 保存当前位置为目标点（可选到点动作）\n4 选择点并预览路径（不运动）\n5 开始导航（会运动，Ctrl+C取消）\n6 停止导航\n7 打开二维导航RViz（膨胀图）\n8 查看状态及已保存点\n9 恢复当前保存地图的定位（先停稳，保留目标点）\n10 在RViz指定大致位置重定位（可直接使用，先静止）\n11 打开彩色建图窗口\n12 打开导航三维点云窗口\n13 选择已保存地图（保留对应目标）\n14 编辑逐点停靠路线\n15 预演整条路线（不运动）\n16 执行整条路线（逐点停稳）\n17 在RViz中添加地图目标（可选到点动作）\n18 编辑途经点参数：到点是否切换越障模式\n19 预演剩余路线（从未完成点开始，不运动）\n20 继续未完成任务（会运动）\n0 退出菜单（定位继续运行）')
   try:
    print('请选择：',end='',flush=True);previous=service_problem()
    while not select.select([sys.stdin],[],[],1)[0]:
@@ -392,7 +451,7 @@ def main():
    choice=choice.strip()
   except (EOFError,KeyboardInterrupt):break
   if choice=='0':break
-  action={'1':'start','2':'finish','3':'record','4':'preview','5':'navigate','6':'stop','7':'rviz','8':'status','9':'restore','10':'assist','11':'mapping-view','12':'cloud','13':'load-map','14':'route-set','15':'route-preview','16':'route-execute','17':'map-point'}.get(choice)
+  action={'1':'start','2':'finish','3':'record','4':'preview','5':'navigate','6':'stop','7':'rviz','8':'status','9':'restore','10':'assist','11':'mapping-view','12':'cloud','13':'load-map','14':'route-set','15':'route-preview','16':'route-execute','17':'map-point','18':'point-settings','19':'route-resume-preview','20':'route-resume'}.get(choice)
   if not action:print('请输入菜单中的编号');continue
   try:dispatch(action)
   except Exception as e:print('未完成：'+str(e))

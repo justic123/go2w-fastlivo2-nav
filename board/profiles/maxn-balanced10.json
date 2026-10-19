@@ -1,0 +1,32 @@
+{
+  "name": "orin-nx-maxn-balanced10-candidate",
+  "image_profile": "10hz",
+  "omp_thread_limit": 4,
+  "openblas_num_threads": 1,
+  "omp_wait_policy": "PASSIVE",
+  "required_power_mode": {
+    "id": 0,
+    "name": "MAXN",
+    "cpu_online": "0-7",
+    "cpu_frequency_cap_khz": 1984000
+  },
+  "parameter_overrides": {
+    "preprocess/point_filter_num": 4,
+    "preprocess/filter_size_surf": 0.15
+  },
+  "calibration": "Keep the verified device calibration; apply only the listed spatial overrides.",
+  "status": "Passed one 530-second offline replay at MAXN with 4 OpenMP threads. Live sensors, Nav2 co-load and ground-truth accuracy are not yet qualified.",
+  "qualification": {
+    "date": "2026-10-15",
+    "input_seconds": 530,
+    "processing_lag_p95_s": 0.24873638153076172,
+    "processing_lag_max_s": 0.4540371894836426,
+    "fusion_output_hz": 9.990404807636986,
+    "max_cpu_temp_c": 57.906,
+    "max_algorithm_rss_mib": 4369.35546875,
+    "last_supported_image_processed": true,
+    "navigation_tested": false,
+    "live_sensors_tested": false,
+    "ground_truth_accuracy_tested": false
+  }
+}

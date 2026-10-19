@@ -1,10 +1,15 @@
 """SSH transport for the independent board guard; default is non-actuating preview."""
-import subprocess,json,time,threading,queue,math
+import subprocess,json,time,threading,queue,math,sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'lifecycle'))
+from compute_backend import guard_command
+from speed_profiles import profile
 class Guard:
- def __init__(self,execute=False,deadline_s=125):
+ def __init__(self,execute=False,deadline_s=125,speed_profile="baseline"):
+  self.speed=profile(speed_profile)
   if not isinstance(deadline_s,int) or not 5<=deadline_s<=1800:raise ValueError("Guard deadline must be 5..1800 seconds")
   self.rows=[];self.q=queue.Queue();self.offset=None;self.clock_checks=[];self.calibrated_at=0.
-  self.p=subprocess.Popen(['ssh','-S','/home/river/.ssh/go2w-mapping.sock','-o','BatchMode=yes','-o','ConnectTimeout=4','unitree@192.168.123.18','python3','/home/unitree/fast_livo2_port/build1/navigation/mppi_guard/relay.py','execute' if execute else 'preview'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
+  self.p=subprocess.Popen(guard_command(execute),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
   def read():
    for line in self.p.stdout:
     try:d=json.loads(line)
@@ -13,8 +18,9 @@ class Guard:
   self.reader=threading.Thread(target=read,daemon=True);self.reader.start()
   try:
    self.calibrate(5)
-   self.write(dict(op='start',deadline_s=deadline_s));d=self.q.get(timeout=3)
-   if not d.get('ready') or d.get('hard_timeout_s')!=deadline_s:raise RuntimeError('Board guard deadline capability mismatch; deploy matching guard first')
+   self.write(dict(op='start',deadline_s=deadline_s,max_forward=self.speed['vx_max']));d=self.q.get(timeout=3)
+   if not d.get('ready') or d.get('hard_timeout_s')!=deadline_s or d.get('max_forward_mps',.2)!=self.speed['vx_max']:raise RuntimeError('Board guard deadline capability mismatch; deploy matching guard first')
+   if self.speed['vx_max']>.7 and d.get('high_speed_gait_guard') is not True:raise RuntimeError('Deploy the guard with fresh gait validation before using hall08')
   except Exception:
    self.close();raise
  def calibrate(self,count=3):
@@ -33,7 +39,7 @@ class Guard:
   if self.p.poll() is not None:raise RuntimeError('Board guard exited')
   self.p.stdin.write(json.dumps(d)+'\n');self.p.stdin.flush()
  def send(self,v,created=None):
-  if len(v)!=3 or not all(math.isfinite(x) for x in v) or not -.1<=v[0]<=.2 or abs(v[1])>1e-8 or abs(v[2])>.8:raise ValueError('Command outside MPPI limits')
+  if len(v)!=3 or not all(math.isfinite(x) for x in v) or not -.1<=v[0]<=self.speed["vx_max"] or abs(v[1])>1e-8 or abs(v[2])>.8:raise ValueError('Command outside MPPI limits')
   created=time.monotonic() if created is None else created
   if time.monotonic()-self.calibrated_at>=2.:self.calibrate()
   self.write(dict(vx=v[0],vy=0.,yaw_rate=v[2],sent_monotonic=created+self.offset))

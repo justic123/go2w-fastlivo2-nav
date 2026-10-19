@@ -22,7 +22,9 @@ try:
   elif obj.get('op')=='start' and child is None:
    deadline=obj.get('deadline_s',125)
    if type(deadline) is not int or not 5<=deadline<=1800:raise ValueError('Invalid guard deadline')
-   child=subprocess.Popen([str(root/'navigation/mppi_guard/build/mppi_guard'),'eth0','--'+mode+'-mppi',str(deadline)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1)
+   max_forward=obj.get('max_forward',.2)
+   if type(max_forward) not in (float,int) or max_forward not in (.2,.4,.8):raise ValueError('Invalid forward speed profile')
+   child=subprocess.Popen([str(Path(__file__).resolve().parent/'build/mppi_guard'),'eth0','--'+mode+'-mppi',str(deadline),str(max_forward)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1)
    reader=threading.Thread(target=output,daemon=True);reader.start()
   elif child is not None:
    # Preserve sent_monotonic exactly; C++ independently rejects late packets.

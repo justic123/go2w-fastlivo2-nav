@@ -1,0 +1,17 @@
+{
+  "demo/localization_anchors.py": "b06278086d4482f07dc4df493064f089e899578549042640a8ef7c7468d90c3d",
+  "demo/test_localization_anchors.py": "5f13bb58c57568dd8cdc17152247e4da57d326af1a9ad6e4d7fb3069a38806a0",
+  "demo/map_store.py": "8baf0d036dca9a15954643a4e0abad38d94adc4f69a2fa3e114b9bb2dd1eaf4c",
+  "demo/console.py": "abfd89836237618b8e88bf0f884b9178af446ad7c69ac4754301c1de2586303e",
+  "board/web/action.py": "faf1d27e88029766b3e3cee3e584928e039ba89665e357c91d2ca3fb93baf2a2",
+  "board/web/server.py": "705683323055aad7b2077d2a74b25f5138a5cb3c01780b7b4edbb1af79de9ee1",
+  "board/web/static/app.js": "c1dabf8c1063c819d1d79181b9bccb0a71d7d68f237ce280b49657afa1b2b548",
+  "board/web/static/index.html": "92fffb0c421d869be5dbc6704a3011aaca1e25128d757f1fd76126c1df891721",
+  "board/web/test_actions.py": "9aba50031f1f80ecb51bbf95bc0ff028d9b9471082c3a5e60afab7acaecb3914",
+  "board/web/test_ui.js": "bb904ccc1d0f7aab6251fb78eb326e011918180703455acbfdaabdabc3581e63",
+  "board/stage_deployment.py": "5ba12f083ad3b8b5f338089da1a227e331482c976c2e96c8037d51321f30fe2e",
+  "board/固定位置重定位使用说明.md": "bde2ae411137d02f395315789cb1d039cf5a081ddef2c16a3bfcab7009ecd485",
+  "navigation/mppi/record.py": "21ab93ad80f64f63b42c10fee8689b104ebd41667f1c14a130be34a3f1259c91",
+  "navigation/mppi/record_policy.py": "a2b070cbe9030a3f5ea035fc0e3ca526486096d578a7372189aec3b6c99e54fd",
+  "navigation/mppi/test_record_policy.py": "3c643755665234d275e6680141a429da9fc8fb4632c871fe745caca4ee5da4e0"
+}

@@ -1,0 +1,181 @@
+--- a/src/vio.cpp
++++ b/src/vio.cpp
+@@ -1,4 +1,5 @@
+ #include "board_profile.h"
++#include "voxel_index.h"
+ /* 
+ This file is part of FAST-LIVO2: Fast, Direct LiDAR-Inertial-Visual Odometry.
+ 
+@@ -229,13 +230,11 @@
+ {
+   V3D pt_w(pt_new->pos_[0], pt_new->pos_[1], pt_new->pos_[2]);
+   double voxel_size = 0.5;
+-  float loc_xyz[3];
++  int64_t loc_xyz[3];
+   for (int j = 0; j < 3; j++)
+-  {
+-    loc_xyz[j] = pt_w[j] / voxel_size;
+-    if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
+-  }
++    loc_xyz[j] = go2w::mapVoxelIndex(pt_w[j], voxel_size);
+   VOXEL_LOCATION position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);
++  ++visual_map_points;
+   auto iter = feat_map.find(position);
+   if (iter != feat_map.end())
+   {
+@@ -352,6 +351,7 @@
+ 
+ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
+ {
++  visual_candidates_scanned = 0;
+   if (feat_map.size() <= 0) return;
+   double ts0 = omp_get_wtime();
+ 
+@@ -377,7 +377,7 @@
+   // double t_insert, t_depth, t_position;
+   // t_insert=t_depth=t_position=0;
+ 
+-  int loc_xyz[3];
++  int64_t loc_xyz[3];
+ 
+   // printf("A0. initial depthmap: %.6lf \n", omp_get_wtime() - ts0);
+   // double ts1 = omp_get_wtime();
+@@ -392,8 +392,7 @@
+ 
+     for (int j = 0; j < 3; j++)
+     {
+-      loc_xyz[j] = floor(pt_w[j] / voxel_size);
+-      if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
++      loc_xyz[j] = go2w::mapVoxelIndex(pt_w[j], voxel_size);
+     }
+     VOXEL_LOCATION position(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
+ 
+@@ -451,6 +450,7 @@
+       bool voxel_in_fov = false;
+       std::vector<VisualPoint *> &voxel_points = corre_voxel->second->voxel_points;
+       int voxel_num = voxel_points.size();
++      visual_candidates_scanned += voxel_num;
+ 
+       for (int i = 0; i < voxel_num; i++)
+       {
+@@ -508,8 +508,7 @@
+ 
+         for (int j = 0; j < 3; j++)
+         {
+-          loc_xyz[j] = floor(sample_point_w[j] / voxel_size);
+-          if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
++          loc_xyz[j] = go2w::mapVoxelIndex(sample_point_w[j], voxel_size);
+         }
+ 
+         VOXEL_LOCATION sample_pos(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
+@@ -524,6 +523,7 @@
+ 
+           std::vector<VisualPoint *> &voxel_points = corre_feat_map->second->voxel_points;
+           int voxel_num = voxel_points.size();
++          visual_candidates_scanned += voxel_num;
+           if (voxel_num == 0) continue;
+ 
+           for (int j = 0; j < voxel_num; j++)
+@@ -569,8 +569,11 @@
+         }
+         else
+         {
+-          VOXEL_LOCATION sample_pos(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
+-          auto iter = plane_map.find(sample_pos);
++          // Visual and LIO maps may have different voxel sizes.
++          VOXEL_LOCATION plane_pos(go2w::mapVoxelIndex(sample_point_w[0], plane_voxel_size),
++                                   go2w::mapVoxelIndex(sample_point_w[1], plane_voxel_size),
++                                   go2w::mapVoxelIndex(sample_point_w[2], plane_voxel_size));
++          auto iter = plane_map.find(plane_pos);
+           if (iter != plane_map.end())
+           {
+             VoxelOctoTree *current_octo;
+@@ -812,6 +815,9 @@
+     if (pg[i].normal == V3D(0, 0, 0)) continue;
+ 
+     V3D pt = pg[i].point_w;
++    // Back-facing points may project inside the image but can never be retrieved.
++    // Reject them here instead of accumulating the same unusable points forever.
++    if (!(new_frame_->w2f(pt)[2] > 0.0)) continue;
+     V2D pc(new_frame_->w2c(pt));
+ 
+     if (new_frame_->cam_->isInFrame(pc.cast<int>(), border)) // 20px is the patch size in the matcher
+@@ -835,6 +841,9 @@
+   for (int j = 0; j < visual_submap->add_from_voxel_map.size(); j++)
+   {
+     V3D pt = visual_submap->add_from_voxel_map[j].point_w;
++    // Back-facing points may project inside the image but can never be retrieved.
++    // Reject them here instead of accumulating the same unusable points forever.
++    if (!(new_frame_->w2f(pt)[2] > 0.0)) continue;
+     V2D pc(new_frame_->w2c(pt));
+ 
+     if (new_frame_->cam_->isInFrame(pc.cast<int>(), border)) // 20px is the patch size in the matcher
+@@ -981,12 +990,9 @@
+     if (update_flag[i] == 0) continue;
+ 
+     const V3D &p_w = pt->pos_;
+-    float loc_xyz[3];
++    int64_t loc_xyz[3];
+     for (int j = 0; j < 3; j++)
+-    {
+-      loc_xyz[j] = p_w[j] / 0.5;
+-      if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
+-    }
++      loc_xyz[j] = go2w::mapVoxelIndex(p_w[j], plane_voxel_size);
+     VOXEL_LOCATION position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);
+     auto iter = plane_map.find(position);
+     if (iter != plane_map.end())
+@@ -1832,7 +1838,15 @@
+   
+   if(colmap_output_en)  dumpDataForColmap();
+ 
++  go2w::set_metric("visual_map_voxels", this->feat_map.size());
++  go2w::set_metric("visual_map_points", visual_map_points);
++  go2w::set_metric("visual_candidates_scanned", visual_candidates_scanned);
++  go2w::set_metric("visual_tracked_points", total_points);
++  go2w::set_metric("visual_retrieval_ms", (t2 - t1) * 1000.0);
+   frame_count++;
++  if (frame_count % 50 == 0)
++    printf("[ VIO map ] voxels=%zu points=%zu scanned=%zu tracked=%d retrieval_ms=%.3f\n",
++           this->feat_map.size(), visual_map_points, visual_candidates_scanned, total_points, (t2-t1)*1000.0);
+   ave_total = ave_total * (frame_count - 1) / frame_count + (t7 - t1 - (t5 - t4)) / frame_count;
+ 
+   // printf("[ VIO ] feat_map.size(): %zu\n", feat_map.size());
+@@ -1852,7 +1866,7 @@
+   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+   printf("\033[1;34m|                         VIO Time                            |\033[0m\n");
+   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+-  printf("\033[1;34m| %-29s | %-27zu |\033[0m\n", "Sparse Map Size", feat_map.size());
++  printf("\033[1;34m| %-29s | %-27zu |\033[0m\n", "Lidar Map Voxels", feat_map.size());
+   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+   printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage", "Time (secs)");
+   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+--- a/include/vio.h
++++ b/include/vio.h
+@@ -83,6 +83,7 @@
+ class VIOManager
+ {
+ public:
++  double plane_voxel_size = 0.5;
+   int grid_size;
+   vk::AbstractCamera *cam;
+   vk::PinholeCamera *pinhole_cam;
+@@ -116,6 +117,8 @@
+   // double ave_build_residual_time = 0;
+   // double ave_ekf_time = 0;
+ 
++  size_t visual_map_points = 0;
++  size_t visual_candidates_scanned = 0;
+   int frame_count = 0;
+   bool plot_flag;
+ 
+--- a/src/LIVMapper.cpp
++++ b/src/LIVMapper.cpp
+@@ -135,6 +135,7 @@
+       throw std::runtime_error("Camera Pcl/Rcl must contain 3/9 values.");
+     if (!vk::camera_loader::loadFromRosNs("laserMapping", vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
+ 
++    vio_manager->plane_voxel_size = static_cast<float>(voxelmap_manager->config_setting_.max_voxel_size_);
+     vio_manager->grid_size = grid_size;
+     vio_manager->patch_size = patch_size;
+     vio_manager->outlier_threshold = outlier_threshold;

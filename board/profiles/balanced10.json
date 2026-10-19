@@ -1,0 +1,20 @@
+{
+  "name": "orin-nx-balanced10-candidate",
+  "image_profile": "10hz",
+  "omp_thread_limit": 2,
+  "openblas_num_threads": 1,
+  "omp_wait_policy": "PASSIVE",
+  "parameter_overrides": {
+    "preprocess/point_filter_num": 4,
+    "preprocess/filter_size_surf": 0.15
+  },
+  "calibration": "Keep the verified device calibration; apply only the listed overrides.",
+  "status": "Passed short replay but failed 530-second replay at 15W; not qualified for navigation.",
+  "qualification": {
+    "date": "2026-10-15",
+    "input_seconds": 530,
+    "processing_lag_p95_s": 11.498221635818481,
+    "processing_lag_max_s": 16.95198130607605,
+    "result": "sustained backlog; still 1.08s behind 20s after playback ended"
+  }
+}

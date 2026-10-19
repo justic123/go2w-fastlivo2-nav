@@ -1,6 +1,7 @@
-"""Fail closed on failed activation or later lifecycle loss; process alive != ready."""
+"""Fail closed on lifecycle loss while retaining observation for recovery."""
 import time,json
 from pathlib import Path
+from status_store import publish as publish_status
 import rclpy
 from rclpy.node import Node
 from lifecycle_msgs.srv import GetState
@@ -13,8 +14,12 @@ try:
    f=c.call_async(GetState.Request());end=time.monotonic()+1
    while not f.done() and time.monotonic()<end:rclpy.spin_once(n,timeout_sec=.05)
    states[k]=f.result().current_state.label if f.done() else 'timeout'
-  ready=all(v=='active' for v in states.values());tmp=root/'lifecycle.tmp';tmp.write_text(json.dumps(dict(ready=ready,states=states,updated=time.time())));tmp.replace(root/'lifecycle.json')
+   if not f.done():f.cancel()
+  ready=all(v=='active' for v in states.values());publish_status(root,'lifecycle',dict(ready=ready,states=states,updated=time.time()))
   if ready:active=True
-  elif active or time.monotonic()>deadline:raise RuntimeError('Nav2 lifecycle unhealthy: '+str(states))
+  elif not active and time.monotonic()>deadline:raise RuntimeError('Nav2 activation failed: '+str(states))
+  # After activation, an unhealthy response revokes action eligibility via
+  # lifecycle.json. Keep observing; do not kill input/localization on one timeout.
   time.sleep(.5)
-finally:n.destroy_node();rclpy.shutdown()
+except KeyboardInterrupt:pass
+finally:n.destroy_node();rclpy.try_shutdown()

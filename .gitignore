@@ -58,3 +58,13 @@ backups/
 /visualization/view_status.json
 /demo/state.json
 /navigation/mppi/demo_nav.yaml
+
+# Board credentials, binding and mutable deployment data
+/board/deployment.json
+/board/current.json
+/board/web-state/
+/board/display/
+/board/calibration/
+/board/source-manifest.json
+/navigation/mppi/maps-trash/
+/navigation/mppi/speed_profile.json

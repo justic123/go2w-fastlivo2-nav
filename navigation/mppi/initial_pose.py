@@ -10,7 +10,7 @@ from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker,MarkerArray
 from nav_msgs.msg import Path as RosPath
 from mission_view import messages as mission_messages
-p=argparse.ArgumentParser();p.add_argument('--map-id',required=True);p.add_argument('--map-root',default='/work/maps');p.add_argument('--state-dir',default='/state');p.add_argument('--display-only',action='store_true');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--map-id',required=True);p.add_argument('--map-root',default='/work/maps');p.add_argument('--state-dir',default='/state');p.add_argument('--display-only',action='store_true');p.add_argument('--runtime-dir');p.add_argument('--click-output');args=p.parse_args()
 if Path(args.map_id).name!=args.map_id or args.map_id in ('.','..'):raise ValueError('Invalid map id')
 root=Path(args.state_dir);maproot=Path(args.map_root)/args.map_id;rclpy.init();n=Node('saved_map_display' if args.display_only else 'saved_map_initial_pose');q=QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL)
 pub=n.create_publisher(PointCloud2,'/demo/saved_cloud',q)
@@ -32,7 +32,7 @@ mission_pub=n.create_publisher(MarkerArray,'/demo/mission',q);plan_pub=n.create_
 def show_status():
  ready=False
  try:
-  current=json.loads((Path(args.map_root).parent/'current.json').read_text());folder=Path(current['folder'])
+  current=json.loads((Path(args.map_root).parent/'current.json').read_text());folder=Path(args.runtime_dir or current['folder'])
   runtime=json.loads((folder/'runtime.json').read_text());loc=json.loads((folder/'localization.json').read_text())
   ready=runtime['phase']=='running' and loc.get('ready') and loc['map_id']==args.map_id and loc['source_session']==current['session'] and 0<=time.time()-loc['updated']<2 and 0<=time.time()-runtime['updated']<2
  except (OSError,ValueError,KeyError):pass
@@ -56,7 +56,7 @@ def target_click(msg):
  pos=msg.pose.position;rot=msg.pose.orientation;v=[pos.x,pos.y,rot.x,rot.y,rot.z,rot.w]
  if not np.isfinite(v).all() or abs(sum(x*x for x in v[2:])-1)>.02:return
  yaw=math.atan2(2*(rot.w*rot.z+rot.x*rot.y),1-2*(rot.y*rot.y+rot.z*rot.z));d=dict(map_id=args.map_id,pose=[pos.x,pos.y,yaw],created=time.time())
- tmp=maproot/'clicked_goal.tmp';tmp.write_text(json.dumps(d));tmp.replace(maproot/'clicked_goal.json')
+ output=Path(args.click_output) if args.click_output else maproot/'clicked_goal.json';tmp=output.with_suffix('.tmp');tmp.write_text(json.dumps(d));tmp.replace(output)
 # Deliberately isolated from Nav2's /goal_pose: a click is data, never a navigation command.
 if args.display_only:n.create_subscription(PoseStamped,'/demo/goal_pose',target_click,10)
 try:rclpy.spin(n)

@@ -14,12 +14,13 @@
 #include <memory>
 #include <iostream>
 #include <string>
+#include <mutex>
 static volatile sig_atomic_t stop_flag=0;
 void stop_signal(int){stop_flag=1;}
 double mono(){timespec t{};clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec*1e-9;}
 int main(int argc,char**argv){
- bool preview_mppi=(argc==3||argc==4) && std::string(argv[2])=="--preview-mppi";
- bool mppi=preview_mppi || ((argc==3||argc==4) && std::string(argv[2])=="--execute-mppi");
+ bool preview_mppi=(argc>=3&&argc<=5) && std::string(argv[2])=="--preview-mppi";
+ bool mppi=preview_mppi || ((argc>=3&&argc<=5) && std::string(argv[2])=="--execute-mppi");
  bool preview_floor=argc==3 && std::string(argv[2])=="--preview-floor";
  bool floor=preview_floor || (argc==3 && std::string(argv[2])=="--execute-floor");
  bool preview_nav=argc==3 && std::string(argv[2])=="--preview-nav";
@@ -31,7 +32,7 @@ int main(int argc,char**argv){
  bool preview_startup=argc==3 && std::string(argv[2])=="--preview-startup";
  bool startup=preview_startup || (argc==3 && std::string(argv[2])=="--execute-startup");
  bool execute=(mppi&&!preview_mppi) || (floor&&!preview_floor) || (nav&&!preview_nav) || (point&&!preview_point) || (startup&&!preview_startup) || (argc==3 && std::string(argv[2])=="--execute");
- if(argc<2||argc>4||(argc==4&&!mppi)||(argc==3&&!execute&&!probe&&!balance&&!preview_startup&&!preview_point&&!preview_nav&&!preview_floor&&!preview_mppi))return 2;
+ if(argc<2||argc>5||(argc>=4&&!mppi)||(argc==3&&!execute&&!probe&&!balance&&!preview_startup&&!preview_point&&!preview_nav&&!preview_floor&&!preview_mppi))return 2;
  signal(SIGINT,stop_signal);signal(SIGTERM,stop_signal);
  std::unique_ptr<unitree::robot::go2::SportClient> client;
  if(execute||probe||balance)unitree::robot::ChannelFactory::Instance()->Init(0,argv[1]);
@@ -39,10 +40,22 @@ int main(int argc,char**argv){
  if(balance){client->SetTimeout(2.f);std::this_thread::sleep_for(std::chrono::seconds(1));int code=client->BalanceStand();std::cout<<nlohmann::json({{"action","BalanceStand"},{"code",code}}).dump()<<std::endl;return code==0?0:1;}
  if(probe){std::atomic<int> count{0};unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_> sub("rt/lf/sportmodestate");sub.InitChannel([&](const void* raw){auto m=static_cast<const unitree_go::msg::dds_::SportModeState_*>(raw);if(count++==0)std::cout<<nlohmann::json({{"mode",m->mode()},{"gait_type",m->gait_type()},{"velocity",m->velocity()},{"yaw_speed",m->yaw_speed()}}).dump()<<std::endl;},1);std::this_thread::sleep_for(std::chrono::seconds(5));std::cout<<nlohmann::json({{"received",count.load()},{"read_only",true}}).dump()<<std::endl;return count>0?0:1;}
  double hard_timeout=mppi?125:floor?1805:nav?65:startup?2.5:point?8.5:20;
- if(argc==4){try{std::size_t used=0;hard_timeout=std::stod(argv[3],&used);if(used!=std::string(argv[3]).size()||!std::isfinite(hard_timeout)||hard_timeout<5||hard_timeout>1800)return 2;}catch(...){return 2;}}
+ if(argc>=4){try{std::size_t used=0;hard_timeout=std::stod(argv[3],&used);if(used!=std::string(argv[3]).size()||!std::isfinite(hard_timeout)||hard_timeout<5||hard_timeout>1800)return 2;}catch(...){return 2;}}
+ double max_forward=.2;
+ if(argc==5){try{std::size_t used=0;max_forward=std::stod(argv[4],&used);if(used!=std::string(argv[4]).size()||!std::isfinite(max_forward)||(max_forward!=.2&&max_forward!=.4&&max_forward!=.8))return 2;}catch(...){return 2;}}
+ // 0.8 m/s is a flat-ground/default-gait profile. Never silently send it
+ // after an App change to obstacle gait, whose documented limit is lower.
+ std::mutex gait_mutex;int gait=-1;double gait_received=0;
+ std::unique_ptr<unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>> gait_sub;
+ if(mppi&&execute&&max_forward>.7){
+  gait_sub.reset(new unitree::robot::ChannelSubscriber<unitree_go::msg::dds_::SportModeState_>("rt/lf/sportmodestate"));
+  gait_sub->InitChannel([&](const void* raw){auto m=static_cast<const unitree_go::msg::dds_::SportModeState_*>(raw);std::lock_guard<std::mutex> lock(gait_mutex);gait=m->gait_type();gait_received=mono();},1);
+  const double until=mono()+1.;
+  while(mono()<until&&!stop_flag){bool received;{std::lock_guard<std::mutex> lock(gait_mutex);received=gait_received>0;}if(received)break;std::this_thread::sleep_for(std::chrono::milliseconds(20));}
+ }
  // 独立停车上限：点到点8.5秒；上层8秒退出。断流0.3秒停车，不允许自动重试。
  const double start=mono();double last=start;bool active=false;std::string pending,reason="timeout";int result=0;
- std::cout<<nlohmann::json({{"ready",true},{"execute",execute},{"hard_timeout_s",hard_timeout}}).dump()<<std::endl;
+ std::cout<<nlohmann::json({{"ready",true},{"execute",execute},{"hard_timeout_s",hard_timeout},{"max_forward_mps",max_forward},{"high_speed_gait_guard",true}}).dump()<<std::endl;
  while(!stop_flag && mono()-start<hard_timeout){
   pollfd p{STDIN_FILENO,POLLIN,0};int status=poll(&p,1,40);
   if(status<0){reason="poll_error";break;}
@@ -55,7 +68,8 @@ int main(int argc,char**argv){
     try{
      auto j=nlohmann::json::parse(line);double age=mono()-j.at("sent_monotonic").get<double>();
      double vx=j.at("vx"),vy=j.at("vy"),w=j.at("yaw_rate");
-     if(!std::isfinite(age)||age<0||age>.15||!std::isfinite(vx)||!std::isfinite(vy)||!std::isfinite(w)||vx<(mppi?-.1:0)||vx>((mppi||floor)?.2:(nav||startup||point)?.1:.06)||vy!=0||std::abs(w)>((mppi||floor||nav)?.8:.12)){std::cout<<nlohmann::json({{"rejected",true},{"command_age_s",age},{"vx",vx},{"vy",vy},{"yaw_rate",w},{"reason","invalid_or_expired_command"}}).dump()<<std::endl;throw std::runtime_error("invalid_or_expired_command");}
+     if(!std::isfinite(age)||age<0||age>.15||!std::isfinite(vx)||!std::isfinite(vy)||!std::isfinite(w)||vx<(mppi?-.1:0)||vx>(mppi?max_forward:floor?.2:(nav||startup||point)?.1:.06)||vy!=0||std::abs(w)>((mppi||floor||nav)?.8:.12)){std::cout<<nlohmann::json({{"rejected",true},{"command_age_s",age},{"vx",vx},{"vy",vy},{"yaw_rate",w},{"reason","invalid_or_expired_command"}}).dump()<<std::endl;throw std::runtime_error("invalid_or_expired_command");}
+     if(mppi&&execute&&max_forward>.7){std::lock_guard<std::mutex> lock(gait_mutex);if(gait!=0||mono()-gait_received>.5)throw std::runtime_error("high_speed_requires_fresh_default_gait");}
      last=mono();active=true;int code=execute?client->Move(vx,0,w):0;
      std::cout<<nlohmann::json({{"code",code},{"execute",execute},{"vx",vx},{"yaw_rate",w}}).dump()<<std::endl;
      if(code!=0){reason="rpc_failed";result=1;stop_flag=1;break;}

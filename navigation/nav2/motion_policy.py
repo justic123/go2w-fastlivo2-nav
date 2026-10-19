@@ -31,18 +31,19 @@ def check_pose(prev, cur, imu=None, level=False):
         return check_heading(prev,cur,imu,level)
 
 # User-measured outer wheel/leg envelope, centered on go2w_base for this trial.
-# Includes 5 cm clearance on every side; keep Nav2 footprint + padding consistent.
-HALF_LENGTH=.375+.05
-HALF_WIDTH=.22+.05
+# Includes 10 cm clearance on every side; keep Nav2 footprint + padding consistent.
+HALF_LENGTH=.375+.10
+HALF_WIDTH=.22+.10
 
-def swept_clear(grid, pose, command):
-    """Filled oriented rectangle over 2.0 s, including rotation and cell area."""
+def swept_clear(grid, pose, command, horizon=2.0):
+    """Filled oriented rectangle, including rotation and full cell area."""
+    if not math.isfinite(horizon) or not 2.<=horizon<=3.:raise ValueError("invalid sweep horizon")
     data,width,height,res,ox,oy=grid
     x0,y0,yaw0=pose[:3];vx,_,w=command
     # Bound unsampled motion between 0.1 s samples using translational + corner speed.
     margin=(abs(vx)+math.hypot(HALF_LENGTH,HALF_WIDTH)*abs(w))*.05
     a,b=HALF_LENGTH+margin,HALF_WIDTH+margin;h=res/2
-    for k in range(21):
+    for k in range(math.ceil(horizon/.1)+1):
         t=k*.1;yaw=yaw0+w*t
         if abs(w)>1e-9:
             x=x0+vx/w*(math.sin(yaw)-math.sin(yaw0))

@@ -12,19 +12,29 @@ from tf2_ros import Buffer,TransformListener
 from guard_proxy import Guard
 sys.path.insert(0,'/tmp/mppi_policy')
 from motion_policy import swept_clear
+from callback_drain import drain_ready
 from route_model import stationary,leg_timeout
+from speed_profiles import profile,source_age_limit
+from motion_modes import arrival_motion
+from health_policy import check_context as checked_context
+from action_diagnostics import checkpoint, failure_details, abort_reason
+from action_startup import wait_stationary
+from arrival_check import verify_stop,completion_issues
 root=Path(__file__).resolve().parent;current=json.loads((root/'current.json').read_text());state=Path('/state');target=json.loads((state/'accuracy_target.json').read_text());execute='--execute' in sys.argv
+speed=profile(json.loads((state/'motion_profile.json').read_text())['name'])
 timeout_s=int(sys.argv[sys.argv.index('--timeout')+1]) if '--timeout' in sys.argv else 90
 if not 10<=timeout_s<=1770:raise ValueError('Invalid execution deadline')
 route_action='--route' in sys.argv
 lock=(state/'motion.lock').open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
 rclpy.init();n=Node('mppi_protected_action',parameter_overrides=[rclpy.parameter.Parameter('use_sim_time',value=True)]);buf=Buffer();listener=TransformListener(buf,n)
 pose=None;grid=None;command=None;pose_received=0.;grid_received=0.;fault=None;stop_requested=False;history=[];goal=None;guard=None
-result=dict(execute=execute,success=False,target=target,ground_truth=None)
+result=dict(execute=execute,success=False,target=target,ground_truth=None,speed_profile=speed)
+nav_log_checkpoint=checkpoint(state)
 # Retain recent global grids so a transient replan failure remains inspectable after stopping.
 global_grids=[]
 collision_snapshot=None
 grid_metadata=None
+count=0
 def global_costs(m):
  global_grids.append(dict(receipt=time.time(),stamp=m.header.stamp.sec+m.header.stamp.nanosec*1e-9,frame=m.header.frame_id,width=m.info.width,height=m.info.height,resolution=m.info.resolution,origin=[m.info.origin.position.x,m.info.origin.position.y],data=list(m.data)))
  global_grids[:]=global_grids[-8:]
@@ -38,7 +48,7 @@ def odom(m):
  if pose:
   dt=cur[3]-pose[3]
   if dt<=0:fault='Odometry timestamp did not advance'
-  elif math.hypot(cur[0]-pose[0],cur[1]-pose[1])>.03+.5*dt or abs(angle(cur[2]-pose[2]))>.05+1.2*dt:fault='Pose jump outside bounded motion'
+  elif math.hypot(cur[0]-pose[0],cur[1]-pose[1])>.03+speed["pose_speed_limit"]*dt or abs(angle(cur[2]-pose[2]))>.05+1.2*dt:fault='Pose jump outside bounded motion'
  pose=cur;pose_received=time.monotonic();history.append(cur);history[:]=history[-100:]
 def costs(m):
  global grid,grid_received,fault,grid_metadata
@@ -49,7 +59,7 @@ def costs(m):
  grid_metadata=dict(frame=m.header.frame_id,stamp=m.header.stamp.sec+m.header.stamp.nanosec*1e-9)
 def checked_sweep(v):
  global collision_snapshot
- try:swept_clear(grid,pose,v)
+ try:swept_clear(grid,pose,v,horizon=2.5 if speed["name"]=="hall08" else 2.0)
  except ValueError as e:
   # Capture in memory before ROS callbacks can replace it. Write only after stopping.
   collision_snapshot=dict(reason=str(e),captured=time.time(),pose=list(pose),command=list(v),
@@ -58,22 +68,24 @@ def checked_sweep(v):
 def cmd(m):
  global command
  command=([m.linear.x,m.linear.y,m.angular.z],time.monotonic())
-n.create_subscription(Odometry,'/mppi/odom',odom,10);n.create_subscription(Twist,'/mppi/cmd_vel_smoothed',cmd,1);n.create_subscription(OccupancyGrid,'/local_costmap/costmap',costs,QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
+n.create_subscription(Odometry,'/mppi/odom',odom,1);n.create_subscription(Twist,'/mppi/cmd_vel_smoothed',cmd,1);n.create_subscription(OccupancyGrid,'/local_costmap/costmap',costs,QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
 def healthy():
+ # Guard startup / ROS action responses can briefly block this thread. Service
+ # queued feedback before assessing receipt age; source-time checks still apply.
+ drain_ready(lambda:rclpy.spin_once(n,timeout_sec=0.),time.monotonic)
  if stop_requested or (route_action and (state/'route_cancel.request').exists()):raise RuntimeError('User interrupted')
  if fault:raise RuntimeError(fault)
  now=time.monotonic()
  if pose is None or grid is None or now-pose_received>.4 or now-grid_received>.8:
   result['stale_input_detail']=dict(odom_present=pose is not None,costmap_present=grid is not None,odom_receipt_age_s=now-pose_received,costmap_receipt_age_s=now-grid_received)
+  try:
+   source=json.loads((state/'input.json').read_text())
+   result['stale_input_detail']['source_snapshot']=source
+   result['stale_input_detail']['subscriber_pose_stamp']=pose[3] if pose else None
+  except (OSError,ValueError):pass
   raise RuntimeError('Odometry/costmap receipt stale: '+json.dumps(result['stale_input_detail']))
- for key in ('input','lifecycle','localization'):
-  d=json.loads((state/(key+'.json')).read_text())
-  if not d.get('ready') or time.time()-d['updated']>1:raise RuntimeError(key+' health lost')
-  if key=='input':
-   if d['session']!=target['source_session'] or max(d['pose_age_s'],d['cloud_age_s'])>.5:raise RuntimeError('Wrong session or sensor source lag')
-  if key=='localization' and d['map_id']!=target['map_id']:raise RuntimeError('Map changed')
- runtime=json.loads((state/'runtime.json').read_text())
- if runtime['phase']!='running' or time.time()-runtime['updated']>1:raise RuntimeError('Navigation supervisor stopped')
+ checked_context(state,target,source_age_limit(speed['name']))
+
 def wait(f,timeout=10):
  end=time.monotonic()+timeout
  while not f.done() and time.monotonic()<end:
@@ -89,10 +101,12 @@ def signal_stop(*_):
  stop_requested=True
 signal.signal(signal.SIGINT,signal_stop);signal.signal(signal.SIGTERM,signal_stop)
 try:
- end=time.monotonic()+4
- while time.monotonic()<end:rclpy.spin_once(n,timeout_sec=.03)
- healthy();a=history[-1];recent=[p for p in history if a[3]-p[3]<2]
- if len(recent)<8 or max(math.hypot(p[0]-a[0],p[1]-a[1]) for p in recent)>.025 or max(abs(angle(p[2]-a[2])) for p in recent)>.025:raise RuntimeError('Start not stationary')
+ result['startup']=wait_stationary(
+  lambda:rclpy.spin_once(n,timeout_sec=.03),healthy,lambda:stationary(history),time.monotonic,
+  lambda:('User interrupted' if stop_requested or (route_action and (state/'route_cancel.request').exists()) else fault))
+ # Startup retries are recorded separately; only a current failure should
+ # populate stale_input_detail in the final action result.
+ result.pop('stale_input_detail',None)
  checked_sweep((0.,0.,0.));result['start']=map_pose()
  p=PoseStamped();p.header.frame_id='map';p.pose.position.x,p.pose.position.y=target['pose'][:2];p.pose.orientation.z=math.sin(target['pose'][2]/2);p.pose.orientation.w=math.cos(target['pose'][2]/2)
  planner=ActionClient(n,ComputePathToPose,'/compute_path_to_pose')
@@ -129,11 +143,14 @@ try:
    while time.monotonic()-tick<.05 and not done.done():rclpy.spin_once(n,timeout_sec=.005)
  if done.done():
   result['navigation_status']=done.result().status
-  if done.result().status!=4:result['reason']='Nav2 action ended with status '+str(done.result().status)+'; inspect controller/planner logs'
+  if done.result().status!=4:
+   result['nav2_diagnostics']=failure_details(state,nav_log_checkpoint)
+   result['reason']=abort_reason(done.result().status,result['nav2_diagnostics'])
  else:result['reason']='Execution deadline' if execute else 'Preview duration reached'
  result['commands']=count;result['timeout_s']=timeout_s
 except Exception as e:
- result['reason']=str(e)
+ result['reason']=str(e);result['commands']=count
+ if getattr(e,'snapshot',None):result['failure_health_snapshot']=e.snapshot
  if getattr(e,'stop',None):result['guard_stop']=e.stop
 finally:
  # Stop transport first: a delayed ROS cancellation cannot keep the robot moving.
@@ -144,11 +161,19 @@ finally:
   try:
    stop_requested=False;wait(goal.cancel_goal_async(),3)
   except Exception as e:result['cancel_error']=str(e)
- end=time.monotonic()+2
- while time.monotonic()<end:rclpy.spin_once(n,timeout_sec=.02)
+ # Only samples acquired after transport closure may prove stopped.
+ history.clear()
  try:
-  healthy();last=map_pose();result['last_pose']=last;result['estimated_xy_error']=math.hypot(last[0]-target['pose'][0],last[1]-target['pose'][1]);result['estimated_yaw_error']=abs(angle(last[2]-target['pose'][2]));result['stationary_after_stop']=stationary(history);result['success']=execute and result['stationary_after_stop'] and result.get('navigation_status')==4 and result['estimated_xy_error']<=.08 and result['estimated_yaw_error']<=.12 and result.get('guard_stop',{}).get('stop_code')==0
+  result['stop_verification']=verify_stop(lambda:rclpy.spin_once(n,timeout_sec=.02),healthy,lambda:history,time.monotonic)
+  result['stationary_after_stop']=result['stop_verification']['stationary']
+  healthy();last=map_pose();result['last_pose']=last
+  result['estimated_xy_error']=math.hypot(last[0]-target['pose'][0],last[1]-target['pose'][1])
+  result['estimated_yaw_error']=abs(angle(last[2]-target['pose'][2]))
  except Exception as e:result['final_health_error']=str(e)
+ if execute:
+  result['completion_issues']=completion_issues(result)
+  result['success']=not result['completion_issues']
+  if not result['success']:result['reason']='；'.join(result['completion_issues'])
  result['preview_passed']=not execute and not result.get('final_health_error') and result.get('guard_stop',{}).get('stop_code')==0 and (result.get('navigation_status')==4 or result.get('reason')=='Preview duration reached')
  if collision_snapshot is not None:
   try:
@@ -157,9 +182,12 @@ finally:
    evidence_path=state/('failure-local-sweep-'+str(time.time_ns())+'.json')
    evidence_path.write_text(json.dumps(snapshot));result['local_collision_evidence']=str(evidence_path)
   except Exception as e:result['local_collision_evidence_error']=str(e)
- (state/'motion_active').unlink(missing_ok=True)
+ # A requested arrival action is completed by the host only after this guard
+ # has closed. Keep the ownership marker until that phase completes.
+ if not (execute and result['success'] and arrival_motion(target)['switch'] and os.environ.get('GO2W_ARRIVAL_ACTION_HOST')=='1'):
+  (state/'motion_active').unlink(missing_ok=True)
  if execute and not result['success']:
   grids_path=state/('failure-global-costmaps-'+time.strftime('%Y%m%d-%H%M%S')+'.json');grids_path.write_text(json.dumps(global_grids));result['global_costmap_evidence']=str(grids_path)
- path=state/('protected-'+('execute' if execute else 'preview')+'-'+time.strftime('%Y%m%d-%H%M%S')+'.json');path.write_text(json.dumps(result,ensure_ascii=False,indent=2));print(json.dumps(result,ensure_ascii=False,indent=2));n.destroy_node();rclpy.try_shutdown()
+ path=state/('protected-'+('execute' if execute else 'preview')+'-'+time.strftime('%Y%m%d-%H%M%S')+'.json');path.write_text(json.dumps(result,ensure_ascii=False,indent=2));(state/'last-action-result.json').write_text(json.dumps(dict(result,finished=time.time()),ensure_ascii=False));print(json.dumps(result,ensure_ascii=False,indent=2));n.destroy_node();rclpy.try_shutdown()
 
 raise SystemExit(0 if result['success'] or result['preview_passed'] else 1)

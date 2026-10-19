@@ -132,7 +132,7 @@ global_costmap:
       height: 200
       resolution: 0.1
       footprint: '[[0.375,0.22],[0.375,-0.22],[-0.375,-0.22],[-0.375,0.22]]'
-      footprint_padding: 0.05
+      footprint_padding: 0.10  # 10 cm beyond measured body on each side
       transform_tolerance: 0.85
       track_unknown_space: true
       plugins:
@@ -157,7 +157,7 @@ global_costmap:
           observation_persistence: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.8
+        inflation_radius: 0.6  # Covers padded footprint circumradius (~0.573 m)
         cost_scaling_factor: 3.0
       origin_x: -100.0
       origin_y: -100.0
@@ -174,7 +174,7 @@ local_costmap:
       height: 6
       resolution: 0.05
       footprint: '[[0.375,0.22],[0.375,-0.22],[-0.375,-0.22],[-0.375,0.22]]'
-      footprint_padding: 0.05
+      footprint_padding: 0.10  # 10 cm beyond measured body on each side
       transform_tolerance: 0.85
       track_unknown_space: true
       plugins:
@@ -199,7 +199,7 @@ local_costmap:
           observation_persistence: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.8
+        inflation_radius: 0.6  # Covers padded footprint circumradius (~0.573 m)
         cost_scaling_factor: 3.0
 lifecycle_manager:
   ros__parameters:

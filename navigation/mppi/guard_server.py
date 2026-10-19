@@ -17,7 +17,7 @@ try:
     if d['op']=='start' and g is None:
      if d['execute']!=execute:raise ValueError('Motion mode mismatch')
      limit=int(sys.argv[sys.argv.index('--timeout')+1]) if '--timeout' in sys.argv else 125
-     g=Guard(execute,deadline_s=limit);r=dict(ready=True,execute=execute)
+     speed=json.loads((state/'motion_profile.json').read_text());g=Guard(execute,deadline_s=limit,speed_profile=speed['name']);r=dict(ready=True,execute=execute)
     elif d['op']=='command' and g:
      g.send(d['v'],d['created']);r=dict(ok=True)
     elif d['op']=='stop' and g:

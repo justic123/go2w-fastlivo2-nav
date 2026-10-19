@@ -1,0 +1,53 @@
+{
+  "name": "orin-nx-balanced5-candidate",
+  "image_profile": "5hz",
+  "omp_thread_limit": 2,
+  "openblas_num_threads": 1,
+  "omp_wait_policy": "PASSIVE",
+  "parameter_overrides": {
+    "preprocess/point_filter_num": 4,
+    "preprocess/filter_size_surf": 0.15
+  },
+  "calibration": "Keep the verified device calibration; apply only the listed overrides.",
+  "output_rate_note": "LIVO fusion updates follow the image schedule; measure actual odometry frequency.",
+  "status": "Passed 530-second offline replay and 60-second stationary live input test at 15W; navigation and ground-truth accuracy remain unqualified.",
+  "qualification": {
+    "date": "2026-10-15",
+    "input_seconds": 530,
+    "processing_lag_p95_s": 0.25809168815612793,
+    "processing_lag_max_s": 0.4550437927246094,
+    "fusion_output_hz": 5.0,
+    "power_mode": "15W, 4 online CPU cores",
+    "navigation_tested": false,
+    "ground_truth_accuracy_tested": false,
+    "live_stationary": {
+      "ready": true,
+      "error": null,
+      "odom_hz": 4.997843408094419,
+      "processing_lag_s": {
+        "count": 583,
+        "mean": 0.13588474238511833,
+        "median": 0.15690211206674576,
+        "p95": 0.21391507191583514,
+        "p99": 0.27002499159425497,
+        "max": 0.482758023776114
+      },
+      "steady_processing_lag_s": {
+        "count": 483,
+        "mean": 0.12401925518291214,
+        "median": 0.10119251208379865,
+        "p95": 0.17042755242437124,
+        "p99": 0.1719860164448619,
+        "max": 0.1731953276321292
+      },
+      "steady_window": {
+        "exclude_startup_s": 10,
+        "exclude_after_last_cloud": true,
+        "start": 2561331.882598976,
+        "end": 2561380.196173184
+      },
+      "max_cpu_temp_c": 55.125,
+      "seconds": 60
+    }
+  }
+}

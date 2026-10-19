@@ -5,6 +5,7 @@ from geometry_msgs.msg import Point,PoseStamped
 from nav_msgs.msg import Path as RosPath
 from visualization_msgs.msg import Marker,MarkerArray
 from route_model import route_spec
+from motion_modes import arrival_motion
 
 def read(p,default):
  try:return json.loads(p.read_text())
@@ -16,12 +17,15 @@ def messages(maproot):
  for index,(name,target) in enumerate(points.items()):
   if target.get('map_id')!=maproot.name or target.get('frame')!='map':continue
   pose=target['pose'];m=Marker();m.header.frame_id='map';m.ns='saved_targets';m.id=index*2;m.type=Marker.ARROW;m.pose.position.x,m.pose.position.y=map(float,pose[:2]);m.pose.position.z=.12;m.pose.orientation.z=math.sin(pose[2]/2);m.pose.orientation.w=math.cos(pose[2]/2);m.scale.x=.28;m.scale.y=.06;m.scale.z=.06;m.color.r=.15;m.color.g=.7;m.color.b=1.;m.color.a=1.
+  try:action=arrival_motion(target);badge=(' [OBSTACLE]' if action['mode']=='obstacle' else ' [NORMAL]') if action['switch'] else ''
+  except ValueError:action=dict(switch=False);badge=' [INVALID ACTION]'
+  if action['switch']:m.color.r=1.;m.color.g=.55;m.color.b=.1
   order=[str(i+1) for i,v in enumerate(names) if v==name];markers.markers.append(m)
-  label=Marker();label.header.frame_id='map';label.ns='saved_targets';label.id=index*2+1;label.type=Marker.TEXT_VIEW_FACING;label.pose.position.x=float(pose[0]);label.pose.position.y=float(pose[1])+.22;label.pose.position.z=.25;label.pose.orientation.w=1.;label.scale.z=.18;label.color=m.color;label.text=('/'.join(order)+': ' if order else '')+name;markers.markers.append(label)
+  label=Marker();label.header.frame_id='map';label.ns='saved_targets';label.id=index*2+1;label.type=Marker.TEXT_VIEW_FACING;label.pose.position.x=float(pose[0]);label.pose.position.y=float(pose[1])+.22;label.pose.position.z=.25;label.pose.orientation.w=1.;label.scale.z=.18;label.color=m.color;label.text=('/'.join(order)+': ' if order else '')+name+badge;markers.markers.append(label)
  plan=RosPath();plan.header.frame_id='map';preview=read(maproot/'mission_view.json',{})
  try:fingerprint=route_spec(dict(map_id=maproot.name,points=points,route=book.get('route')))['fingerprint']
  except (ValueError,TypeError,AttributeError,KeyError):fingerprint=None
- if fingerprint and preview.get('fingerprint')==fingerprint and preview.get('success'):
+ if fingerprint and (preview.get('full_fingerprint') or preview.get('fingerprint'))==fingerprint and preview.get('success'):
   for segment in preview['segments']:
    for x,y in segment['path']:
     p=PoseStamped();p.header.frame_id='map';p.pose.position.x=float(x);p.pose.position.y=float(y);p.pose.position.z=.03;p.pose.orientation.w=1.;plan.poses.append(p)

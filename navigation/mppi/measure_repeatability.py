@@ -6,6 +6,7 @@ import math
 import time
 from pathlib import Path
 import numpy as np
+from speed_profiles import source_age_limit
 
 def wrap(a):
     return math.atan2(math.sin(a), math.cos(a))
@@ -40,6 +41,7 @@ def main():
     root=Path(__file__).resolve().parent
     current=json.loads((root/'current.json').read_text())
     folder=Path(current['folder']); session=current['session']
+    max_source_age=source_age_limit(json.loads((folder/'motion_profile.json').read_text())['name'])
     reference=json.loads(args.reference.read_text()) if args.reference else None
     samples=[]; stamps=set(); map_id=None
     until=time.monotonic()+args.seconds
@@ -54,7 +56,7 @@ def main():
             age=time.time()-value['updated']
             if not value.get('ready') or not 0 <= age <= .7:
                 raise RuntimeError(name+' not fresh/ready')
-        if any(not -.05 <= d[k] <= .5 for k in ['pose_age_s','cloud_age_s']):
+        if any(not -.05 <= d[k] <= max_source_age for k in ['pose_age_s','cloud_age_s']):
             raise RuntimeError('Source timestamps too old or in future')
         map_id=loc['map_id'] if map_id is None else map_id
         if map_id!=loc['map_id']: raise RuntimeError('Map changed')

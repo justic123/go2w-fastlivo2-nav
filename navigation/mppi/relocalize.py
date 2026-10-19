@@ -1,6 +1,7 @@
 """Global FPFH candidates followed by ICP. Writes a candidate, never silently activates it."""
 import argparse,json,time,numpy as np,open3d as o3d
 from pathlib import Path
+from registration_consensus import select as select_consensus
 root=Path('/state');reg=o3d.pipelines.registration
 parser=argparse.ArgumentParser();parser.add_argument('--map-id',default='room-20260928');parser.add_argument('--hint',action='store_true');args=parser.parse_args()
 if Path(args.map_id).name!=args.map_id or args.map_id in ('.','..'):raise ValueError('Invalid map id')
@@ -30,8 +31,8 @@ for seed in range(5 if args.hint else 4):
   icp=reg.registration_icp(fine_s,fine_t,.2,r.transformation,reg.TransformationEstimationPointToPlane(),reg.ICPConvergenceCriteria(max_iteration=60));T=icp.transformation
  tilt=np.arccos(np.clip(T[2,2],-1,1))
  d=dict(seed=seed,fitness=icp.fitness,rmse=icp.inlier_rmse,tilt=float(tilt),transform=T.tolist());results.append(d);print(json.dumps(d),flush=True)
-results.sort(key=lambda r:(r['tilt']<.25,r['fitness'],-r['rmse']),reverse=True);best=results[0];T=np.array(best['transform']);agree=sum(np.linalg.norm(np.array(r['transform'])[:3,3]-T[:3,3])<.15 and np.linalg.norm(np.array(r['transform'])[:3,:3]-T[:3,:3])<.1 for r in results)
-d=dict(map_id=args.map_id,source_session=inp['session'],created=time.time(),source_points=len(source),target_points=len(target),candidates=results,consensus=int(agree),accepted=bool(best['fitness']>.65 and best['rmse']<.12 and best['tilt']<.25 and agree>=3),transform=best['transform'])
+choice=select_consensus(results,hint=hint);best=choice['best'];T=np.array(best['transform']);agree=choice['consensus']
+d=dict(map_id=args.map_id,source_session=inp['session'],created=time.time(),source_points=len(source),target_points=len(target),candidates=results,consensus=int(agree),accepted=choice['accepted'],transform=best['transform'],supporting_seeds=choice['supporting_seeds'],selection_method='quality-gated pairwise consensus with medoid representative')
 if args.hint:
  shift=float(np.linalg.norm(T[:3,3]-hint[:3,3]));turn=float(np.linalg.norm(Rotation.from_matrix(hint[:3,:3].T@T[:3,:3]).as_rotvec()))
  d.update(method='user_hint_multistart_icp',hint_correction_m=shift,hint_correction_rad=turn)

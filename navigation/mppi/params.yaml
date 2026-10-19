@@ -38,10 +38,10 @@ controller_server:
       model_dt: 0.05
       batch_size: 1000
       iteration_count: 1
-      vx_std: 0.12
+      vx_std: 0.18
       vy_std: 0.0
       wz_std: 0.3
-      vx_max: 0.2
+      vx_max: 0.4
       vx_min: -0.1
       vy_max: 0.0
       wz_max: 0.8
@@ -84,7 +84,7 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 3.0
-        threshold_to_consider: 0.12
+        threshold_to_consider: 0.07
       PathAlignCritic:
         enabled: true
         cost_power: 1
@@ -104,10 +104,10 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 2.0
-        threshold_to_consider: 0.12
+        threshold_to_consider: 0.07
         offset_from_furthest: 4
         max_angle_to_furthest: 1.0
-        mode: 0
+        forward_preference: true
       PreferForwardCritic:
         enabled: true
         cost_power: 1
@@ -126,7 +126,7 @@ global_costmap:
     ros__parameters:
       update_frequency: 2.0
       publish_frequency: 1.0
-      global_frame: map
+      global_frame: camera_init
       robot_base_frame: go2w_mppi_base
       use_sim_time: true
       rolling_window: false
@@ -134,11 +134,10 @@ global_costmap:
       height: 60
       resolution: 0.1
       footprint: '[[0.375,0.22],[0.375,-0.22],[-0.375,-0.22],[-0.375,0.22]]'
-      footprint_padding: 0.05
+      footprint_padding: 0.10  # 10 cm beyond measured body on each side
       transform_tolerance: 0.6
       track_unknown_space: true
       plugins:
-      - static_layer
       - obstacle_layer
       - inflation_layer
       always_send_full_costmap: true
@@ -162,15 +161,10 @@ global_costmap:
           raytrace_min_range: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.8
+        inflation_radius: 0.6  # Covers padded footprint circumradius (~0.573 m)
         cost_scaling_factor: 3.0
       origin_x: -30.0
       origin_y: -30.0
-      static_layer:
-        plugin: nav2_costmap_2d::StaticLayer
-        map_topic: /map
-        map_subscribe_transient_local: true
-        subscribe_to_updates: false
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -184,7 +178,7 @@ local_costmap:
       height: 6
       resolution: 0.05
       footprint: '[[0.375,0.22],[0.375,-0.22],[-0.375,-0.22],[-0.375,0.22]]'
-      footprint_padding: 0.05
+      footprint_padding: 0.10  # 10 cm beyond measured body on each side
       transform_tolerance: 0.6
       track_unknown_space: true
       plugins:
@@ -211,14 +205,13 @@ local_costmap:
           raytrace_min_range: 0.0
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
-        inflation_radius: 0.8
+        inflation_radius: 0.6  # Covers padded footprint circumradius (~0.573 m)
         cost_scaling_factor: 3.0
 lifecycle_manager:
   ros__parameters:
     use_sim_time: true
     autostart: true
     node_names:
-    - map_server
     - planner_server
     - controller_server
     - velocity_smoother
@@ -230,7 +223,7 @@ velocity_smoother:
     feedback: OPEN_LOOP
     scale_velocities: false
     max_velocity:
-    - 0.2
+    - 0.4
     - 0.0
     - 0.8
     min_velocity:
@@ -242,7 +235,7 @@ velocity_smoother:
     - 0.0
     - 0.5
     max_decel:
-    - -0.3
+    - -0.4
     - 0.0
     - -0.5
     odom_topic: /mppi/odom
@@ -255,23 +248,17 @@ velocity_smoother:
 bt_navigator:
   ros__parameters:
     use_sim_time: true
-    global_frame: map
+    global_frame: camera_init
     robot_base_frame: go2w_mppi_base
     odom_topic: /mppi/odom
     transform_tolerance: 0.6
     default_nav_to_pose_bt_xml: /work/navigate.xml
     default_nav_through_poses_bt_xml: /work/navigate_through.xml
     bt_loop_duration: 10
-    default_server_timeout: 20
+    default_server_timeout: 1000
     plugin_lib_names:
     - nav2_compute_path_through_poses_action_bt_node
     - nav2_compute_path_to_pose_action_bt_node
     - nav2_follow_path_action_bt_node
     - nav2_rate_controller_bt_node
     - nav2_pipeline_sequence_bt_node
-map_server:
-  ros__parameters:
-    use_sim_time: true
-    yaml_filename: /work/maps/room-20260928/map.yaml
-    topic_name: /map
-    frame_id: map

@@ -1,0 +1,2 @@
+# Dependency patches preserve upstream whitespace for exact reconstruction.
+*.patch -whitespace

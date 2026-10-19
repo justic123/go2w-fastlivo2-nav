@@ -7,15 +7,17 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import ComputePathToPose
 from tf2_ros import Buffer,TransformListener
 from route_model import leg_timeout
+from motion_modes import arrival_motion,action_label,manual_handoff
+from health_policy import check_context
+from preview_recovery import wait_healthy
+from speed_profiles import source_age_limit
 root=Path('/state');spec=json.loads((root/'route_request.json').read_text());result=dict(success=False,execute=False,fingerprint=spec['fingerprint'],map_id=spec['map_id'],source_session=spec['source_session'],segments=[])
 rclpy.init();n=rclpy.create_node('mission_plan',parameter_overrides=[rclpy.parameter.Parameter('use_sim_time',value=True)]);buf=Buffer();listener=TransformListener(buf,n);active=None
 
 def health():
- for name in ('input','localization','lifecycle'):
-  d=json.loads((root/(name+'.json')).read_text())
-  if not d.get('ready') or not 0<=time.time()-d['updated']<1:raise RuntimeError(name+' not fresh')
-  if name=='input' and d['session']!=spec['source_session']:raise RuntimeError('Session changed')
-  if name=='localization' and d['map_id']!=spec['map_id']:raise RuntimeError('Map changed')
+ speed=json.loads((root/'motion_profile.json').read_text())['name']
+ wait_healthy(lambda:check_context(root,spec,source_age_limit(speed)),
+              pump=lambda:rclpy.spin_once(n,timeout_sec=.03))
 
 def wait(f):
  end=time.monotonic()+15
@@ -37,8 +39,8 @@ try:
   r=wait(active.get_result_async());active=None
   if r.status!=4 or not r.result.path.poses:raise RuntimeError('No valid path to '+target['name'])
   points=[[p.pose.position.x,p.pose.position.y] for p in r.result.path.poses];length=sum(math.dist(a,b) for a,b in zip(points,points[1:]));budget=leg_timeout(length)
-  result['segments'].append(dict(index=index,name=target['name'],path=points,length_m=length,timeout_s=budget));prior=g.goal
-  print(json.dumps(dict(segment=index+1,name=target['name'],length_m=round(length,2),timeout_s=budget),ensure_ascii=False),flush=True)
+  result['segments'].append(dict(index=index,name=target['name'],path=points,length_m=length,timeout_s=budget,arrival_motion=arrival_motion(target),manual_handoff=manual_handoff(target)));prior=g.goal
+  print(json.dumps(dict(segment=index+1,name=target['name'],length_m=round(length,2),timeout_s=budget,on_arrival=action_label(target)),ensure_ascii=False),flush=True)
  health();result['success']=True
 except Exception as e:result['reason']=str(e)
 finally:
