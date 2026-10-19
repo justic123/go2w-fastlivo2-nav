@@ -29,3 +29,7 @@ Current deployment and modifications are documented in the project history and p
 ## Onboard source snapshot, 2026-10-19
 
 `board/native/fastlivo2-20261019.patch` contains the actual onboard FAST-LIVO2 changes against upstream commit `0d2c0346107b75b59934975adec9a6eeeb913c64` (GPLv2). The source and patch hashes are recorded in `board/native/deployed-snapshot-20261019.json`; these patches retain upstream authorship and license. Native IMU changes are in `mapping/`, matching the separately deployed sensor workspace. Numerical calibration files under `board/native/fastlivo2-config-20261019/` describe this deployment, not validated calibration for other robots. No combined binary, recording, map, runtime credentials or machine binding is included.
+
+## FAST-LIO2 onboard backend
+
+`board/native/fastlio2-xt16.patch` is derived from [hku-mars/FAST_LIO](https://github.com/hku-mars/FAST_LIO) at commit `7cc4175de6f8ba2edf34bab02a42195b141027e9`, with ikd-Tree pinned to `e2e3f4e9d3b95a9e66b1ba83dc98d4a05ed8a3c4`. Upstream carries a GPLv2 root license and embedded BSD notices; the patch retains the original authorship and is not relicensed by this repository. Exact sources, patch checksum and the submodule pin are in `board/native/fastlio2-source.json`. Upstream licenses and notices apply to separately fetched dependencies. No prebuilt combined executable is distributed here.

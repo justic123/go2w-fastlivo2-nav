@@ -1,0 +1,406 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5f91a33..ed384dc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,7 +1,9 @@
+ cmake_minimum_required(VERSION 2.8.3)
+ project(fast_lio)
+ 
+-SET(CMAKE_BUILD_TYPE "Debug")
++if(NOT CMAKE_BUILD_TYPE)
++  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
++endif()
+ 
+ ADD_COMPILE_OPTIONS(-std=c++14 )
+ ADD_COMPILE_OPTIONS(-std=c++14 )
+@@ -15,24 +17,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -pthread -std=c++0x -std=c++14 -fexceptions")
+ 
+-message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
+-if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
+-  include(ProcessorCount)
+-  ProcessorCount(N)
+-  message("Processer number:  ${N}")
+-  if(N GREATER 4)
+-    add_definitions(-DMP_EN)
+-    add_definitions(-DMP_PROC_NUM=3)
+-    message("core for MP: 3")
+-  elseif(N GREATER 3)
+-    add_definitions(-DMP_EN)
+-    add_definitions(-DMP_PROC_NUM=2)
+-    message("core for MP: 2")
+-  else()
+-    add_definitions(-DMP_PROC_NUM=1)
+-  endif()
+-else()
+-  add_definitions(-DMP_PROC_NUM=1)
++set(GO2W_MP_THREADS 4 CACHE STRING "Explicit worker count, including ARM")
++if(NOT GO2W_MP_THREADS MATCHES "^(1|2|4)$")
++  message(FATAL_ERROR "GO2W_MP_THREADS must be 1, 2 or 4")
++endif()
++add_definitions(-DMP_PROC_NUM=${GO2W_MP_THREADS})
++if(GO2W_MP_THREADS GREATER 1)
++  add_definitions(-DMP_EN)
++endif()
++option(GO2W_WITH_LIVOX "Compile optional Livox CustomMsg input" OFF)
++set(GO2W_LIVOX_COMPONENTS)
++if(GO2W_WITH_LIVOX)
++  list(APPEND GO2W_LIVOX_COMPONENTS livox_ros_driver)
++  add_definitions(-DGO2W_WITH_LIVOX)
+ endif()
+ 
+ find_package(OpenMP QUIET)
+@@ -51,7 +48,7 @@ find_package(catkin REQUIRED COMPONENTS
+   std_msgs
+   pcl_ros
+   tf
+-  livox_ros_driver
++  ${GO2W_LIVOX_COMPONENTS}
+   message_generation
+   eigen_conversions
+ )
+@@ -66,7 +63,8 @@ include_directories(
+   ${EIGEN3_INCLUDE_DIR}
+   ${PCL_INCLUDE_DIRS}
+   ${PYTHON_INCLUDE_DIRS}
+-  include)
++  include
++  ${CATKIN_DEVEL_PREFIX}/include)
+ 
+ add_message_files(
+   FILES
+@@ -86,4 +84,12 @@ catkin_package(
+ 
+ add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
+ target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
+-target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+\ No newline at end of file
++target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
++add_dependencies(fastlio_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
++
++option(GO2W_BUILD_CHECKS "Build synthetic XT16 adapter check without sensor access" OFF)
++if(GO2W_BUILD_CHECKS)
++  add_executable(go2w_xt16_check tests/go2w_xt16_check.cpp src/preprocess.cpp)
++  add_dependencies(go2w_xt16_check ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
++  target_link_libraries(go2w_xt16_check ${catkin_LIBRARIES} ${PCL_LIBRARIES})
++endif()
+diff --git a/package.xml b/package.xml
+index 98bc774..aeac23f 100644
+--- a/package.xml
++++ b/package.xml
+@@ -25,7 +25,6 @@
+   <build_depend>sensor_msgs</build_depend>
+   <build_depend>tf</build_depend>
+   <build_depend>pcl_ros</build_depend>
+-  <build_depend>livox_ros_driver</build_depend>
+   <build_depend>message_generation</build_depend>
+ 
+   <run_depend>geometry_msgs</run_depend>
+@@ -36,7 +35,6 @@
+   <run_depend>std_msgs</run_depend>
+   <run_depend>tf</run_depend>
+   <run_depend>pcl_ros</run_depend>
+-  <run_depend>livox_ros_driver</run_depend>
+   <run_depend>message_runtime</run_depend>
+ 
+   <test_depend>rostest</test_depend>
+diff --git a/src/laserMapping.cpp b/src/laserMapping.cpp
+index fc41408..a1bce84 100644
+--- a/src/laserMapping.cpp
++++ b/src/laserMapping.cpp
+@@ -1,3 +1,7 @@
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <stdexcept>
+ // This is an advanced implementation of the algorithm described in the
+ // following paper:
+ //   J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time.
+@@ -56,7 +60,10 @@
+ #include <tf/transform_datatypes.h>
+ #include <tf/transform_broadcaster.h>
+ #include <geometry_msgs/Vector3.h>
++#ifdef GO2W_WITH_LIVOX
+ #include <livox_ros_driver/CustomMsg.h>
++#endif
++#include <std_msgs/Float64.h>
+ #include "preprocess.h"
+ #include <ikd-Tree/ikd_Tree.h>
+ 
+@@ -289,6 +296,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
+ 
+     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
+     p_pre->process(msg, ptr);
++    if (ptr->empty()) { mtx_buffer.unlock(); return; }
+     lidar_buffer.push_back(ptr);
+     time_buffer.push_back(msg->header.stamp.toSec());
+     last_timestamp_lidar = msg->header.stamp.toSec();
+@@ -299,6 +307,7 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
+ 
+ double timediff_lidar_wrt_imu = 0.0;
+ bool   timediff_set_flg = false;
++#ifdef GO2W_WITH_LIVOX
+ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) 
+ {
+     mtx_buffer.lock();
+@@ -325,6 +334,7 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+ 
+     PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
+     p_pre->process(msg, ptr);
++    if (ptr->empty()) { mtx_buffer.unlock(); return; }
+     lidar_buffer.push_back(ptr);
+     time_buffer.push_back(last_timestamp_lidar);
+     
+@@ -333,6 +343,8 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+     sig_buffer.notify_all();
+ }
+ 
++#endif
++
+ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) 
+ {
+     publish_count ++;
+@@ -830,21 +842,28 @@ int main(int argc, char** argv)
+     /*** debug record ***/
+     FILE *fp;
+     string pos_log_dir = root_dir + "/Log/pos_log.txt";
+-    fp = fopen(pos_log_dir.c_str(),"w");
++    fp = runtime_pos_log ? fopen(pos_log_dir.c_str(),"w") : nullptr;
+ 
+     ofstream fout_pre, fout_out, fout_dbg;
+-    fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
+-    fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
+-    fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
++    if(runtime_pos_log) fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
++    if(runtime_pos_log) fout_out.open(DEBUG_FILE_DIR("mat_out.txt"),ios::out);
++    if(runtime_pos_log) fout_dbg.open(DEBUG_FILE_DIR("dbg.txt"),ios::out);
+     if (fout_pre && fout_out)
+         cout << "~~~~"<<ROOT_DIR<<" file opened" << endl;
+     else
+         cout << "~~~~"<<ROOT_DIR<<" doesn't exist" << endl;
+ 
+     /*** ROS subscribe initialization ***/
+-    ros::Subscriber sub_pcl = p_pre->lidar_type == AVIA ? \
+-        nh.subscribe(lid_topic, 200000, livox_pcl_cbk) : \
+-        nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
++    ros::Subscriber sub_pcl;
++#ifdef GO2W_WITH_LIVOX
++    if(p_pre->lidar_type==AVIA) sub_pcl=nh.subscribe(lid_topic,100,livox_pcl_cbk);
++    else
++#endif
++    {
++      if(p_pre->lidar_type==AVIA) throw std::runtime_error("Livox support disabled in this build");
++      sub_pcl=nh.subscribe(lid_topic,5,standard_pcl_cbk);
++    }
++    ros::Publisher pubProcessingLag=nh.advertise<std_msgs::Float64>("processing_lag",10);
+     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+     ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>
+             ("/cloud_registered", 100000);
+@@ -980,6 +999,8 @@ int main(int argc, char** argv)
+             if (path_en)                         publish_path(pubPath);
+             if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
+             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
++            std_msgs::Float64 lag;lag.data=ros::Time::now().toSec()-lidar_end_time;
++            pubProcessingLag.publish(lag);
+             // publish_effect_world(pubLaserCloudEffect);
+             // publish_map(pubLaserCloudMap);
+ 
+diff --git a/src/preprocess.cpp b/src/preprocess.cpp
+index 09a3959..66007f7 100644
+--- a/src/preprocess.cpp
++++ b/src/preprocess.cpp
+@@ -1,3 +1,7 @@
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <stdexcept>
+ #include "preprocess.h"
+ 
+ #define RETURN0     0x00
+@@ -41,12 +45,15 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num)
+   point_filter_num = pfilt_num;
+ }
+ 
++#ifdef GO2W_WITH_LIVOX
+ void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+ {  
+   avia_handler(msg);
+   *pcl_out = pl_surf;
+ }
+ 
++#endif
++
+ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
+ {
+   switch (time_unit)
+@@ -78,6 +85,10 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
+     velodyne_handler(msg);
+     break;
+ 
++  case XT16:
++    xt16_handler(msg);
++    break;
++
+   case MARSIM:
+     sim_handler(msg);
+     break;
+@@ -89,6 +100,7 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
+   *pcl_out = pl_surf;
+ }
+ 
++#ifdef GO2W_WITH_LIVOX
+ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+ {
+   pl_surf.clear();
+@@ -186,6 +198,8 @@ void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg)
+   }
+ }
+ 
++#endif
++
+ void Preprocess::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+ {
+   pl_surf.clear();
+@@ -955,3 +969,39 @@ bool Preprocess::edge_jump_judge(const PointCloudXYZI &pl, vector<orgtype> &type
+   
+   return true;
+ }
++
++// Preserve supplied point times; never infer deskew timing from scan angle.
++void Preprocess::xt16_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
++{
++  pl_surf.clear();pl_corn.clear();pl_full.clear();
++  if (feature_enabled || point_filter_num < 1 || N_SCANS != 16 || msg->is_bigendian ||
++      msg->height != 1 || msg->width < 2) {
++    ROS_ERROR_THROTTLE(2., "XT16 requires normalized little-endian 16-ring input and direct matching");return;
++  }
++  const std::pair<const char*,uint8_t> required[] = {
++    {"x",7},{"y",7},{"z",7},{"intensity",7},{"ring",4},{"timestamp",8}};
++  for (const auto &field : required) {
++    auto f=std::find_if(msg->fields.begin(),msg->fields.end(),[&](const sensor_msgs::PointField &v){return v.name==field.first;});
++    const size_t bytes=field.second==8?8:field.second==4?2:4;
++    if (f==msg->fields.end() || f->datatype!=field.second || f->count!=1 ||
++        uint64_t(f->offset)+bytes>msg->point_step) {
++      ROS_ERROR_THROTTLE(2., "XT16 input fields do not match normalized bridge");return;
++    }
++  }
++  if (uint64_t(msg->width)*msg->point_step>msg->row_step ||
++      uint64_t(msg->row_step)*msg->height>msg->data.size()) return;
++  pcl::PointCloud<go2w_xt16::Point> input;pcl::fromROSMsg(*msg,input);
++  const double begin=msg->header.stamp.toSec();double previous=begin;
++  pl_surf.reserve(input.size()/point_filter_num+1);
++  for (size_t i=0;i<input.size();++i) {
++    const auto &v=input[i];const double dt=v.timestamp-begin;
++    if (!std::isfinite(v.timestamp) || v.timestamp<previous-1e-6 || dt<0 || dt>.2 || v.ring>=16 ||
++        !std::isfinite(v.x) || !std::isfinite(v.y) || !std::isfinite(v.z) || !std::isfinite(v.intensity)) {
++      pl_surf.clear();ROS_ERROR_THROTTLE(2., "XT16 point/time bounds invalid");return;
++    }
++    previous=v.timestamp;
++    if (i%point_filter_num || v.x*v.x+v.y*v.y+v.z*v.z<=blind*blind) continue;
++    PointType p{};p.x=v.x;p.y=v.y;p.z=v.z;p.intensity=v.intensity;
++    p.curvature=dt*1000.;pl_surf.push_back(p);
++  }
++}
+diff --git a/src/preprocess.h b/src/preprocess.h
+index 35f3833..bf2c248 100644
+--- a/src/preprocess.h
++++ b/src/preprocess.h
+@@ -5,7 +5,9 @@
+ #include <ros/ros.h>
+ #include <pcl_conversions/pcl_conversions.h>
+ #include <sensor_msgs/PointCloud2.h>
++#ifdef GO2W_WITH_LIVOX
+ #include <livox_ros_driver/CustomMsg.h>
++#endif
+ 
+ using namespace std;
+ 
+@@ -14,7 +16,7 @@ using namespace std;
+ typedef pcl::PointXYZINormal PointType;
+ typedef pcl::PointCloud<PointType> PointCloudXYZI;
+ 
+-enum LID_TYPE{AVIA = 1, VELO16, OUST64, MARSIM}; //{1, 2, 3}
++enum LID_TYPE{AVIA = 1, VELO16, OUST64, MARSIM, XT16}; //{1, 2, 3}
+ enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
+ enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
+ enum Surround{Prev, Next};
+@@ -83,6 +85,20 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point,
+     (std::uint32_t, range, range)
+ )
+ 
++// Normalized XT16 bridge: absolute float64 point stamps in seconds.
++namespace go2w_xt16 {
++struct EIGEN_ALIGN16 Point {
++  PCL_ADD_POINT4D;
++  float intensity;
++  std::uint16_t ring;
++  double timestamp;
++  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
++};
++}
++POINT_CLOUD_REGISTER_POINT_STRUCT(go2w_xt16::Point,
++  (float,x,x)(float,y,y)(float,z,z)(float,intensity,intensity)
++  (std::uint16_t,ring,ring)(double,timestamp,timestamp))
++
+ class Preprocess
+ {
+   public:
+@@ -91,7 +107,9 @@ class Preprocess
+   Preprocess();
+   ~Preprocess();
+   
++#ifdef GO2W_WITH_LIVOX
+   void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
++#endif
+   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
+ 
+@@ -107,7 +125,10 @@ class Preprocess
+     
+ 
+   private:
++#ifdef GO2W_WITH_LIVOX
+   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
++#endif
++  void xt16_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+   void sim_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
+diff --git a/tests/go2w_xt16_check.cpp b/tests/go2w_xt16_check.cpp
+new file mode 100644
+index 0000000..73cc86c
+--- /dev/null
++++ b/tests/go2w_xt16_check.cpp
+@@ -0,0 +1,31 @@
++#include "../src/preprocess.h"
++#include <cstring>
++#include <cmath>
++#include <stdexcept>
++#include <iostream>
++
++void require(bool value,const char* reason){if(!value)throw std::runtime_error(reason);}
++sensor_msgs::PointCloud2::Ptr cloud(){
++  sensor_msgs::PointCloud2::Ptr m(new sensor_msgs::PointCloud2());
++  m->header.stamp=ros::Time(1700000000,0);m->height=1;m->width=8;m->point_step=26;m->row_step=208;m->is_bigendian=false;m->data.resize(208);
++  const char* names[]={"x","y","z","intensity","ring","timestamp"};int offsets[]={0,4,8,12,16,18};int types[]={7,7,7,7,4,8};
++  for(int i=0;i<6;++i){sensor_msgs::PointField f;f.name=names[i];f.offset=offsets[i];f.datatype=types[i];f.count=1;m->fields.push_back(f);}
++  for(size_t i=0;i<8;++i){float x=1.f+i*.1f,y=.2f,z=.3f,intensity=5.f;uint16_t ring=i;double t=1700000000.+i*.01;auto b=m->data.data()+i*26;
++    std::memcpy(b,&x,4);std::memcpy(b+4,&y,4);std::memcpy(b+8,&z,4);std::memcpy(b+12,&intensity,4);std::memcpy(b+16,&ring,2);std::memcpy(b+18,&t,8);}
++  return m;
++}
++int main(){
++  ros::Time::init();
++  try{
++    Preprocess p;p.set(false,5,.6,4);p.N_SCANS=16;p.time_unit=0;
++    PointCloudXYZI::Ptr result(new PointCloudXYZI());auto m=cloud();p.process(m,result);
++    require(result->size()==2,"point filter changed");require(std::abs(result->at(0).curvature)<.001,"first time not scan start");require(std::abs(result->at(1).curvature-40.)<.001,"point seconds were not converted to milliseconds");
++    m=cloud();m->fields.back().datatype=7;p.process(m,result);require(result->empty(),"bad timestamp field accepted");
++    m=cloud();double backwards=1699999999.;std::memcpy(m->data.data()+26+18,&backwards,8);p.process(m,result);require(result->empty(),"timestamp rollback accepted");
++    m=cloud();double late=1700000001.;std::memcpy(m->data.data()+7*26+18,&late,8);p.process(m,result);require(result->empty(),"unbounded scan accepted");
++    m=cloud();m->data.resize(5);p.process(m,result);require(result->empty(),"truncated data accepted");
++    m=cloud();uint16_t ring=16;std::memcpy(m->data.data()+16,&ring,2);p.process(m,result);require(result->empty(),"invalid ring accepted");
++    m=cloud();p.feature_enabled=true;p.process(m,result);require(result->empty(),"unsupported feature extraction accepted");
++    std::cout<<"XT16 preprocess: valid timing/filtering and 6 malformed inputs rejected"<<std::endl;return 0;
++  }catch(const std::exception& e){std::cerr<<e.what()<<std::endl;return 1;}
++}

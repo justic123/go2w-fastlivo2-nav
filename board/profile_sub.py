@@ -6,7 +6,7 @@ import threading
 import time
 import rospy
 from nav_msgs.msg import Odometry
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 
 rospy.init_node('board_profile_observer')
 lock = threading.Lock()
@@ -20,6 +20,7 @@ with open(sys.argv[1], 'x', buffering=1) as output:
         p=message.pose.pose.position; q=message.pose.pose.orientation
         emit('odom', dict(stamp=message.header.stamp.to_sec(), pose=[p.x,p.y,p.z,q.x,q.y,q.z,q.w]))
     subscriptions = [rospy.Subscriber('/go2w_lio/profile', String, profile, queue_size=1000),
+                     rospy.Subscriber('/go2w_lio/processing_lag', Float64, lambda m:emit('lag',dict(seconds=m.data)), queue_size=100),
                      rospy.Subscriber('/go2w_lio/odometry', Odometry, odometry, queue_size=1000)]
     try:
         rospy.spin()

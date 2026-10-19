@@ -1,0 +1,4 @@
+[31m[ERROR] [1792398846.923716448]: XT16 input fields do not match normalized bridge[0m
+[31m[ERROR] [1792398846.923834464]: XT16 point/time bounds invalid[0m
+[31m[ERROR] [1792398846.923856416]: XT16 requires normalized little-endian 16-ring input and direct matching[0m
+XT16 preprocess: valid timing/filtering and 6 malformed inputs rejected

@@ -1,0 +1,26 @@
+{
+  "upstream": "https://github.com/hku-mars/FAST_LIO.git",
+  "commit": "7cc4175de6f8ba2edf34bab02a42195b141027e9",
+  "submodules": {
+    "include/ikd-Tree": {
+      "url": "https://github.com/hku-mars/ikd-Tree.git",
+      "commit": "e2e3f4e9d3b95a9e66b1ba83dc98d4a05ed8a3c4"
+    }
+  },
+  "patch": "board/native/fastlio2-xt16.patch",
+  "patch_sha256": "902ac4debd0e6d195ef519407c96619519dade33df137eec48b7bb158ea73525",
+  "compile_options": {
+    "GO2W_MP_THREADS": 4,
+    "GO2W_WITH_LIVOX": false,
+    "GO2W_BUILD_CHECKS": true,
+    "CMAKE_BUILD_TYPE": "Release"
+  },
+  "source_sha256": {
+    "CMakeLists.txt": "5be3b917321b2d02b2d94c532941a2902a6ff502cbcc1d3bdab3e77f25ca5253",
+    "package.xml": "802af1e0d86a1978f5d35a3877555918e3021d8cde77f70e47984ab574be7d57",
+    "src/laserMapping.cpp": "d574ce730570e0134ce725628d3a421a905b3892df13c7d5755871bc6d7c5d5e",
+    "src/preprocess.cpp": "57afc15e45059506322ff5fabdf0c74a94b526dcc89b4f6b5880d33cf566a458",
+    "src/preprocess.h": "83f401e5a5b5593dff41103921a0d1a9c59c5d1c91803b34086b17722f3dee6f",
+    "tests/go2w_xt16_check.cpp": "1ec3f691548004e6740ac8e5453b1a6d81a6a682cdff59a541a295a0bd83a55a"
+  }
+}

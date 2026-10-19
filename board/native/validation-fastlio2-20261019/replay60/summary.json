@@ -1,0 +1,22 @@
+{
+  "error": null,
+  "wall_s": 81.11666800000012,
+  "seconds": 60,
+  "start": 30,
+  "source_bag": "/home/unitree/fast_livo2_port/onboard/deploy-20261015/board/runs/board-20261019-133115-18379/sensors.bag",
+  "port": 11431,
+  "camera_started": false,
+  "drivers_started": false,
+  "motion_commands_sent": false,
+  "odom_count": 597,
+  "nonfinite_poses": 0,
+  "nonincreasing_stamps": 0,
+  "max_odom_gap_s": 0.10509514808654785,
+  "position_span_from_first_m": 0.01278391350793345,
+  "lag_s": {
+    "n": 597,
+    "p50": 0.07277321815490723,
+    "p95": 0.0880286693572998,
+    "max": 0.10641646385192871
+  }
+}

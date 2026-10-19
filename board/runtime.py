@@ -13,6 +13,7 @@ import time
 from initialization import StationaryInitialization
 from runtime_profile import settings
 from port_check import check_ports
+from fusion_backend import plan
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parent
@@ -21,6 +22,7 @@ from backlog_policy import BacklogGuard
 
 cfg = json.loads((ROOT / 'deployment.json').read_text())
 profile = settings(cfg)
+backend = plan(cfg)
 base = Path(cfg['sensor_base'])
 release = Path(cfg['fusion_release'])
 folder = ROOT / 'runs' / sys.argv[1]
@@ -44,7 +46,7 @@ def read(path):
 
 def status(phase):
     d = dict(phase=phase, error=error, compute_location='board', updated=time.time(),
-             profile=cfg['profile'], recording=recording,
+             profile=cfg['profile'], fusion_backend=backend['name'], vision_enabled=backend['vision'], recording=recording,
              children=[dict(role=k,pid=p.pid,running=p.poll() is None) for k,p in children])
     temp = folder / 'runtime.tmp';temp.write_text(json.dumps(d));temp.replace(folder / 'runtime.json')
 
@@ -84,7 +86,7 @@ try:
         if not proc.name.isdigit():continue
         try:
             words = (proc / 'cmdline').read_bytes().split(b'\0')
-            if words and Path(words[0].decode()).name in ('fastlivo_mapping','xt16_driver','unitree_slam'):
+            if words and Path(words[0].decode()).name in ('fastlivo_mapping','fastlio_mapping','xt16_driver','unitree_slam'):
                 raise RuntimeError('External sensor/fusion owner PID ' + proc.name)
         except (FileNotFoundError,ProcessLookupError,PermissionError,UnicodeError):pass
     check_ports((11331,11335,11339))
@@ -107,25 +109,29 @@ try:
         except (subprocess.CalledProcessError,subprocess.TimeoutExpired):time.sleep(.2)
     else:raise RuntimeError('Native ROS master unavailable')
     run(['rosparam','set','/use_sim_time','false'])
-    for name,ns in [('livo.yaml','/go2w_lio'),('camera.yaml','/go2w_lio/laserMapping')]:
+    for name,ns in backend['parameters']:
         shutil.copy2(release / name,folder / name)
         run(['rosparam','load',str(folder / name),ns])
     start('clock',['/usr/bin/python3',str(ROOT/'clock_source.py')])
-    start('algorithm',[str(release/'ws/devel/lib/fast_livo/fastlivo_mapping'),'__ns:=/go2w_lio',
-                       '/aft_mapped_to_init:=/go2w_lio/odometry','/cloud_registered:=/go2w_lio/cloud',
-                       '/path:=/go2w_lio/path','/mavros/vision_pose/pose:=/go2w_lio/unused_pose'])
-    start('decode',['/usr/bin/python3',str(ROOT/'replay_decode.py'),str(folder/'images.json'),profile['decoder_mode'],'--source-rate-limited'])
+    start('algorithm',[str(release/backend['binary']),'__ns:=/go2w_lio']+backend['remaps'])
+    if backend['vision']:
+        start('decode',['/usr/bin/python3',str(ROOT/'replay_decode.py'),str(folder/'images.json'),profile['decoder_mode'],'--source-rate-limited'])
     start('monitor',['/usr/bin/python3',str(PROJECT/'desktop/monitor.py'),str(folder/'health.json')])
     start('view',['/usr/bin/python3',str(PROJECT/'desktop/ros1_view_source.py')])
     start('nav_export',['/usr/bin/python3',str(PROJECT/'navigation/mppi/source_ros1.py')])
     start('driver',['bash','/home/unitree/go2w_slam_setup/helpers/run_driver.sh'])
-    start('jpeg',[str(base/'mapping/jpeg_build/livo_jpeg'),'_duration_sec:=0','_rate_hz:='+str(profile['image_hz'])])
+    if backend['vision']:
+        start('jpeg',[str(base/'mapping/jpeg_build/livo_jpeg'),'_duration_sec:=0','_rate_hz:='+str(profile['image_hz'])])
     start('bridge',['/usr/bin/python3',str(base/'mapping/mapping_bridge.py'),'--imu-source','ros2',
                     '--diagnostic','--point-time-unit','ns','--header-reference','end','--seconds','0',
                     '--max-radius','95','--output',str(folder/'bridge')])
-    start('bag',['/opt/ros/noetic/lib/rosbag/record','--lz4','--buffsize','128','-O',str(folder/'sensors.bag'),
-                 '/go2w_lio/points','/go2w_lio/imu','/go2w_livo/jpeg','/go2w_lio/odometry','/go2w_lio/processing_lag'])
-    recording['phase']='running'
+    if backend['recording_enabled']:
+        topics=['/go2w_lio/points','/go2w_lio/imu','/go2w_lio/odometry','/go2w_lio/processing_lag']
+        if backend['vision']:topics.append('/go2w_livo/jpeg')
+        start('bag',['/opt/ros/noetic/lib/rosbag/record','--lz4','--buffsize','128','-O',str(folder/'sensors.bag')]+topics)
+        recording['phase']='running'
+    else:
+        recording['phase']='disabled'
     status('initializing');end=time.monotonic()+30;initialization=StationaryInitialization()
     while time.monotonic()<end:
         if stop:raise RuntimeError('Stopped during stationary initialization')
@@ -141,7 +147,7 @@ try:
         if h.get('lag_last_s') is not None:guard.check(h['lag_last_s'],time.monotonic())
         for role,p in children:
             if role!='bag':continue
-            if p.poll() is not None and recording['phase']=='running':recording.update(phase='closed' if p.returncode==0 else 'failed',returncode=p.returncode)
+            if p.poll() is not None and recording['phase'] in ('running','stopping'):recording.update(phase='closed' if p.returncode==0 else 'failed',returncode=p.returncode)
             elif p.poll() is None and recording['phase']=='running' and shutil.disk_usage(folder).free<2*1024**3:
                 recording['phase']='stopping';os.killpg(p.pid,signal.SIGINT)
         status('running');time.sleep(.2)

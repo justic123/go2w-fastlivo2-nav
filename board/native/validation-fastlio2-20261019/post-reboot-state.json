@@ -1,0 +1,11 @@
+{
+  "observed_at": 1792399035.702428,
+  "fusion_current": {
+    "run": "board-20261019-163045-6455",
+    "folder": "/home/unitree/fast_livo2_port/onboard/deploy-20261015/board/runs/board-20261019-163045-6455",
+    "pid": 6457,
+    "birth": "269636"
+  },
+  "note": "Initialization refused external xt16_driver 4187 / unitree_slam 4318, not current-ready; no motion sent",
+  "boot_time": "btime 1792395948"
+}
