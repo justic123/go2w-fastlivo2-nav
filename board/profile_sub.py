@@ -12,8 +12,11 @@ rospy.init_node('board_profile_observer')
 lock = threading.Lock()
 with open(sys.argv[1], 'x', buffering=1) as output:
     def emit(kind, data):
+        try:line=json.dumps(dict(kind=kind, wall=time.monotonic(), data=data), allow_nan=False)
+        except ValueError:
+            line=json.dumps(dict(kind='invalid',wall=time.monotonic(),data=dict(kind=kind,reason='Nonfinite observer data')))
         with lock:
-            output.write(json.dumps(dict(kind=kind, wall=time.monotonic(), data=data), allow_nan=False)+'\n')
+            output.write(line+'\n')
     def profile(message):
         emit('profile', json.loads(message.data))
     def odometry(message):

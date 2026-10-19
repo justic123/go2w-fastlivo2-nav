@@ -94,3 +94,20 @@ const planEnv={};vm.createContext(planEnv);vm.runInContext(planCode,planEnv);
 const ps={now:100,state:{map_id:'m',session:'s',route_resume_preview:{success:true,map_id:'m',source_session:'s',resume_token:'token',created:99,segments:[{path:[[0,0],[1,1]]}]}},resume:{token:'token'},view:{route_plan:{frame:'map',updated:99,points:[[4,4],[5,5]]}}};
 assert.equal(JSON.stringify(planEnv.displayPlans(ps,'map')[0].points),'[[0,0],[1,1]]');assert.equal(JSON.stringify(planEnv.displayPlans({...ps,resume:{token:'changed'}},'map')[0].points),'[[4,4],[5,5]]');
 console.log('UI: continuation displays only the remaining validated path');
+
+// A disabled visual backend must hide old frames and report its intended mode.
+const cameraCode=source.slice(source.indexOf('function updateCamera('),source.indexOf('function update(s)'));
+const cameraControls={cameraAge:{},cameraEmpty:{},camera:{style:{}}};
+const ce={$:id=>cameraControls[id],camURL:'blob:old',age:x=>String(x)};vm.createContext(ce);vm.runInContext(cameraCode,ce);
+ce.updateCamera({now:100,camera:{enabled:false,updated:99}});
+assert.equal(cameraControls.camera.hidden,true);assert.match(cameraControls.cameraAge.textContent,/已关闭/);assert.match(cameraControls.cameraEmpty.textContent,/雷达/);
+ce.updateCamera({now:100,camera:{enabled:true,updated:99}});assert.equal(cameraControls.camera.hidden,false);assert.match(cameraControls.cameraAge.textContent,/实时/);
+console.log('UI: FAST-LIO2 hides cached camera frames and reports disabled vision');
+
+// A newly saved active map replaces the old selection; ordinary polls keep user browsing.
+const optionCode=source.slice(source.indexOf('function options('),source.indexOf('function handoffOf('));
+const select={value:'old',dataset:{},replaceChildren(){},append(){}};
+const oe={$:()=>select,document:{createElement:()=>({})}};vm.createContext(oe);vm.runInContext(optionCode,oe);
+oe.options('maps',['old','new'],'new',true);assert.equal(select.value,'new');
+select.value='old';oe.options('maps',['old','new'],'new',false);assert.equal(select.value,'old');
+console.log('UI: new active map is selected while ordinary polls preserve user choice');

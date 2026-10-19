@@ -3,6 +3,7 @@
 import argparse,json,math,os,signal,socket,subprocess,time
 from pathlib import Path
 from port_check import check_ports
+from replay_validation import failures
 
 
 def main():
@@ -59,12 +60,13 @@ def main():
     invalid=sum(not all(math.isfinite(x) for x in d['pose']) for d in odom)
     gaps=[b['stamp']-a['stamp'] for a,b in zip(odom,odom[1:])]
     drift=max((math.dist(d['pose'][:3],odom[0]['pose'][:3]) for d in odom),default=None)
-    summary=dict(error=error,wall_s=time.monotonic()-started,seconds=a.seconds,start=a.start,source_bag=str(a.bag),
+    validation_errors=failures(events,a.seconds)
+    summary=dict(error=error,validation_errors=validation_errors,max_source_age_s=.6,wall_s=time.monotonic()-started,seconds=a.seconds,start=a.start,source_bag=str(a.bag),
                  port=a.port,camera_started=False,drivers_started=False,motion_commands_sent=False,odom_count=len(odom),nonfinite_poses=invalid,
                  nonincreasing_stamps=sum(v<=0 for v in gaps),max_odom_gap_s=max(gaps) if gaps else None,position_span_from_first_m=drift,
                  lag_s=dict(n=len(lag),p50=lag[len(lag)//2],p95=lag[int((len(lag)-1)*.95)],max=lag[-1]) if lag else None)
     (a.output/'summary.json').write_text(json.dumps(summary,indent=2));print(json.dumps(summary,indent=2))
-    if error or len(odom)<a.seconds*5 or invalid or any(v<=0 for v in gaps):raise SystemExit(1)
+    if error or validation_errors:raise SystemExit(1)
 
 
 if __name__=='__main__':main()

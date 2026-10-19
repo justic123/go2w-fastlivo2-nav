@@ -1,0 +1,99 @@
+{
+  "at": 1792400588.2031856,
+  "static": {
+    "seconds": 180.03738076799937,
+    "samples": 3498,
+    "unhealthy_samples": 0,
+    "motion_marker_from_preview": true,
+    "metrics": {
+      "pose_age_s": {
+        "n": 3498,
+        "min": 0.03707146644592285,
+        "p50": 0.09818792343139648,
+        "p95": 0.1398019790649414,
+        "p99": 0.14250779151916504,
+        "max": 0.15844202041625977,
+        "over_half_second": 0
+      },
+      "cloud_age_s": {
+        "n": 3498,
+        "min": 0.11943435668945312,
+        "p50": 0.15934228897094727,
+        "p95": 0.20279240608215332,
+        "p99": 0.24114084243774414,
+        "max": 0.24572420120239258,
+        "over_half_second": 0
+      },
+      "fusion_lag_s": {
+        "n": 3498,
+        "min": 0.04382467269897461,
+        "p50": 0.05365276336669922,
+        "p95": 0.059530019760131836,
+        "p99": 0.06810259819030762,
+        "max": 0.09497213363647461,
+        "over_half_second": 0
+      },
+      "icp_processing_s": {
+        "n": 3498,
+        "min": 0.022581600000194157,
+        "p50": 0.032989311999699567,
+        "p95": 0.05277475200000481,
+        "p99": 0.08825132800029678,
+        "max": 0.08825132800029678,
+        "over_half_second": 0
+      }
+    }
+  },
+  "protected_previews": [
+    {
+      "execute": false,
+      "preview_passed": true,
+      "reason": null,
+      "planned_length_m": 0.0030824389651315062,
+      "commands": 1,
+      "stationary_after_stop": true
+    },
+    {
+      "execute": false,
+      "preview_passed": true,
+      "reason": "Preview duration reached",
+      "planned_length_m": 3.211476309039034,
+      "commands": 152,
+      "stationary_after_stop": true
+    },
+    {
+      "execute": false,
+      "preview_passed": true,
+      "reason": "Preview duration reached",
+      "planned_length_m": 3.211476309039034,
+      "commands": 152,
+      "stationary_after_stop": true
+    },
+    {
+      "execute": false,
+      "preview_passed": true,
+      "reason": "Preview duration reached",
+      "planned_length_m": 3.211476309039034,
+      "commands": 152,
+      "stationary_after_stop": true
+    }
+  ],
+  "command_age": {
+    "n": 457,
+    "max": 0.06309161599983781
+  },
+  "route": {
+    "success": true,
+    "execute": false,
+    "segment_lengths": [
+      2.267272556227267,
+      2.2494266281747133
+    ]
+  },
+  "current": {
+    "fusion": "board-20261019-165128-10621",
+    "navigation": "live-20261019-165227-11678",
+    "map_id": "demo-20261019-165225-709906688"
+  },
+  "motion_commands_sent": false
+}

@@ -1,0 +1,9 @@
+{
+  "changed_files": [
+    "navigation/mppi/maps/demo-20261019-131350-148523424/console_points.json"
+  ],
+  "reason": "start_mapping archive_state persists goals with previously validated fusion session binding",
+  "target_names_equal": true,
+  "target_poses_equal": true,
+  "geometry_unchanged": true
+}

@@ -154,7 +154,7 @@ def activate_registration(d,candidate,session):
  for target in points.values():
   target.setdefault('original_source_session',target['source_session']);target['source_session']=session
  save(phase='navigation',session=session,points=points,preview=None,route_preview=None,route_resume_preview=None,recovery_error=None)
- print('旧地图定位已恢复，原目标点已保留。先在RViz核对位置和机头方向，再选择4重新预演；不会自动导航。')
+ print('旧地图定位已恢复，原目标点已保留。先在网页核对位置和机头方向，再重新预演；不会自动导航。')
 
 def prepare_assisted_inputs():
  # Reuse healthy FAST-LIVO2; only rebuild its session if fusion itself is down.
@@ -261,7 +261,7 @@ def _finish_mapping(d):
  write(MPPI/'selection.json',dict(map_id=ident,source_session=d['session'],created=time.time(),transform=[[1.,0.,0.,0.],[0.,1.,0.,0.],[0.,0.,1.,0.],[0.,0.,0.,1.]],note='Map frozen in this live camera_init frame; validate before navigation'))
  run(['/usr/bin/python3',MPPI/'make_config.py','--output',MPPI/'demo_nav.yaml']);run(['env','GO2W_MPPI_CONFIG=/work/demo_nav.yaml','bash','MPPI导航.sh','start']);wait_ready(True)
  save(phase='navigation',preview=None,recovery_error=None)
- print('地图已保存并验证：'+ident+'。本轮地图采集已结束，FAST-LIVO2仍运行以提供定位。')
+ print('地图已保存并验证：'+ident+'。本轮地图采集已结束，板载融合继续运行以提供定位。')
 
 def record(name):
  d=state()
@@ -288,7 +288,7 @@ def preview(name):
  if not r.get('preview_passed'):raise RuntimeError('预演未通过')
  save(preview=dict(name=name,at=time.time(),pose=r['last_pose'],timeout_s=r.get('recommended_timeout_s',90),target_fingerprint=point_fingerprint(state()['points'][name])))
  print('到点动作：'+action_label(state()['points'][name])+'（预演不执行切换）。')
- print('预演通过。请在RViz确认障碍被识别且路径从外侧绕行，再选择开始导航。')
+ print('预演通过。请在网页核对障碍和规划路线，再明确确认开始导航。')
 def current_map_pose():
  from pose_transform import map_pose
  r=folder();inp=read(r/'input.json');loc=read(r/'localization.json');v=inp['pose']['pose']

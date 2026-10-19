@@ -86,7 +86,8 @@ def snapshot():
     nav_ok=inp.get('session')==fc.get('run') and fresh(inp) and fresh(life) and nr.get('phase')=='running' and 0<=time.time()-nr.get('updated',0)<2
     localized=nav_ok and fresh(loc) and loc.get('map_id')==d.get('map_id') and loc.get('source_session')==fc.get('run') and d.get('session')==fc.get('run')
     ready=bool(fusion_ok and localized and d.get('phase')=='navigation')
-    view=read(CACHE/'view.json');camera=read(CACHE/'camera.json')
+    from camera_policy import status as camera_status
+    view=read(CACHE/'view.json');camera=camera_status(read(ROOT/'board/deployment.json'),read(CACHE/'camera.json'),fc.get('run'))
     with lock:j=dict(job or read(STATE/'last-job.json'));j.pop('owner',None)
     if j.get('id'):
         try:

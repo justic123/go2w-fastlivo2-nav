@@ -20,6 +20,14 @@ class PolicyTests(unittest.TestCase):
             self.assertTrue(common.fresh({'ready':True,'updated':99}))
 
 class CameraTests(unittest.TestCase):
+    def test_disabled_backend_never_exposes_cached_frames(self):
+        from camera_policy import status,enabled
+        self.assertTrue(enabled({}))
+        self.assertTrue(enabled(dict(fusion_backend='fastlivo2')))
+        d=status(dict(fusion_backend='fastlio2'),dict(updated=100,phase='ready'),'new')
+        self.assertFalse(d['enabled']);self.assertEqual(d['updated'],0)
+        self.assertEqual(d['phase'],'disabled');self.assertEqual(d['session'],'new')
+        self.assertTrue(status({},dict(updated=100),'old')['enabled'])
     def test_restart_after_master_session_changes(self):
         from camera_policy import reconnect_needed as check
         self.assertTrue(check('new','old',0,False,True,0))

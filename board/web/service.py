@@ -3,7 +3,7 @@
 import os,signal,subprocess,time
 from pathlib import Path
 from common import ROOT,STATE,read,atomic
-from camera_policy import reconnect_needed
+from camera_policy import reconnect_needed, enabled, status as camera_status
 stop=False;children=[];camera_process=None;camera_session=None;camera_retry=0.;name='go2w-web-view'
 def request(*_):
     global stop
@@ -24,7 +24,11 @@ try:
     env=dict(os.environ,ROS_MASTER_URI='http://127.0.0.1:11331',ROS_IP='127.0.0.1',ROS_HOSTNAME='localhost')
     def start_camera():
         return subprocess.Popen(['bash','-c','source /opt/ros/noetic/setup.bash; exec /usr/bin/python3 "$1"','_',str(ROOT/'board/web/camera.py')],env=env)
-    camera_process=start_camera();camera_session=read(ROOT/'board/current.json').get('run');camera_retry=time.monotonic()
+    def stop_camera():
+        if camera_process is not None and camera_process.poll() is None:
+            camera_process.terminate()
+            try:camera_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:camera_process.kill();camera_process.wait()
     children.append(subprocess.Popen(['/usr/bin/python3',str(ROOT/'board/web/server.py')]))
     while not stop:
         if any(p.poll() is not None for p in children):raise RuntimeError('Web child exited')
@@ -32,11 +36,13 @@ try:
         folder=Path(current.get('folder','/nonexistent'));health=read(folder/'health.json')
         alive=health.get('ready') and 0<=time.time()-health.get('updated',0)<2
         camera=read(STATE/'cache/camera.json')
-        if reconnect_needed(session,camera_session,time.monotonic()-camera_retry,camera_process.poll() is not None,alive,time.time()-camera.get('updated',0)):
-            if camera_process.poll() is None:
-                camera_process.terminate()
-                try:camera_process.wait(timeout=3)
-                except subprocess.TimeoutExpired:camera_process.kill();camera_process.wait()
+        deployment=read(ROOT/'board/deployment.json')
+        if not enabled(deployment):
+            stop_camera();camera_process=None;camera_session=session
+            disabled=camera_status(deployment,camera,session)
+            if camera!=disabled:atomic(STATE/'cache/camera.json',disabled)
+        elif reconnect_needed(session,camera_session,time.monotonic()-camera_retry,camera_process is None or camera_process.poll() is not None,alive,time.time()-camera.get('updated',0)):
+            stop_camera()
             atomic(STATE/'cache/camera.json',dict(updated=0,source='/go2w_livo/jpeg',phase='reconnecting',session=session))
             camera_process=start_camera();camera_session=session;camera_retry=time.monotonic()
             print('Camera subscriber reconnected for '+str(session),flush=True)
